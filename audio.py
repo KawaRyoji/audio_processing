@@ -11,7 +11,7 @@ from scipy.signal.windows import get_window
 from deep_learning.util import JSONObject
 
 
-@dataclass(frozen=True)
+@dataclass
 class FrameParameter(JSONObject):
     frame_len: int
     frame_shift: int
@@ -33,7 +33,7 @@ class FrameParameter(JSONObject):
         return self.frame_shift / fs / 1000.0
 
 
-@dataclass(frozen=True)
+@dataclass
 class SpectrumParameter(JSONObject):
     fft_point: int
     window: str
@@ -112,23 +112,23 @@ class FrameSeries:
             )
 
         if feature_name == "waveform":
-            feature_data = series
+            return series
 
         if spectrum_param is None:
             raise RuntimeError("spectrum_param must not be None.")
 
         if feature_name == "spectrum":
-            feature_data = series.to_amplitude_spectrum(
+            return series.to_amplitude_spectrum(
                 spectrum_param, include_nyquist=include_nyquist
             )
 
         if feature_name == "log spectrum":
-            feature_data = series.to_amplitude_spectrum(
+            return series.to_amplitude_spectrum(
                 spectrum_param, include_nyquist=include_nyquist
             ).to_dB()
 
         if feature_name == "mel frequency":
-            feature_data = series.to_amplitude_spectrum(
+            return series.to_amplitude_spectrum(
                 spectrum_param, include_nyquist=include_nyquist
             ).to_mel_frequency()
 
@@ -137,10 +137,9 @@ class FrameSeries:
         if mel_bins is None:
             raise RuntimeError("mel_bins must not be None.")
 
-        if feature_name == "mel spectrum":
-            feature_data = series.to_mel_spectrum(spectrum_param, fs, mel_bins)
-
-        return feature_data
+        # メルスペクトルが最後に残る
+        assert feature_name == "mel spectrum"
+        return series.to_mel_spectrum(spectrum_param, fs, mel_bins)
 
     def to_amplitude_spectrum(
         self, param: SpectrumParameter, include_nyquist=True
