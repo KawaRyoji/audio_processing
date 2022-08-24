@@ -150,9 +150,9 @@ class FrameSeries:
         spectrum = to_spectrum(frames)
         if include_nyquist:
             # ナイキスト周波数 + 1点分を返す
-            return FrameSeries(spectrum[: param.fft_point // 2 + 1])
+            return FrameSeries(spectrum[:, : param.fft_point // 2 + 1])
         else:
-            return FrameSeries(spectrum[: param.fft_point // 2])
+            return FrameSeries(spectrum[:, : param.fft_point // 2])
 
     def to_dB(self) -> "FrameSeries":
         to_dB = lambda frame: 20 * np.log10(
@@ -170,11 +170,11 @@ class FrameSeries:
         self, param: SpectrumParameter, fs: float, mel_bins: int
     ) -> "FrameSeries":
         spectrum = self.to_amplitude_spectrum(param).frame_series
-        power = spectrum**2
+        power = spectrum ** 2
 
-        filter = mel(fs, param.fft_point, n_mels=mel_bins)
+        filter = mel(sr=fs, n_fft=param.fft_point, n_mels=mel_bins)
 
-        return FrameSeries(np.dot(filter, power.T))
+        return FrameSeries(np.dot(filter, power.T).T)
 
     def to_image(self, time_len: int):
         padded = np.pad(
