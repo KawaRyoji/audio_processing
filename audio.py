@@ -176,10 +176,10 @@ class FrameSeries:
 
         return FrameSeries(np.dot(filter, power.T).T)
 
-    def to_image(self, time_len: int):
-        padded = np.pad(
+    def to_image(self, time_len: int) -> np.ndarray:
+        padded :np.ndarray = np.pad(
             self.frame_series,
-            (0, (time_len - (self.frame_series.shape[0] % time_len)), (0, 0)),
+            ((0, (time_len - (self.frame_series.shape[0] % time_len))), (0, 0)),
         )
 
         return padded.reshape(padded.shape[0] // time_len, time_len, padded.shape[1])
