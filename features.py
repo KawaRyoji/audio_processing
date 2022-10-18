@@ -69,7 +69,7 @@ class FrameSeries:
             print("This feature is already a dB value.")
             return self
 
-        if self.__power:
+        if self.power:
             dB_func = lambda frame: 10 * np.log10(
                 frame, out=np.zeros_like(frame), where=frame != 0
             )
@@ -83,7 +83,7 @@ class FrameSeries:
             self.frame_length,
             self.frame_shift,
             dB=True,
-            power=self.__power,
+            power=self.power,
         )
 
     def dB_to_linear(self) -> "FrameSeries":
@@ -120,11 +120,11 @@ class FrameSeries:
             self.frame_length,
             self.frame_shift,
             dB=self.dB,
-            power=self.power,
+            power=True,
         )
 
     def power_to_linear(self) -> "FrameSeries":
-        if self.power is None or self.power:
+        if self.power is None or not self.power:
             print("This feature is already linear value.")
             return self
         elif self.dB is None or self.dB:
@@ -140,14 +140,23 @@ class FrameSeries:
         )
 
     def plot(
-        self, show=True, save_fig_path: Optional[str] = None, color_map: str = "magma"
+        self,
+        up_to_nyquist=True,
+        show=True,
+        save_fig_path: Optional[str] = None,
+        color_map: str = "magma",
     ) -> None:
+        if up_to_nyquist:
+            show_data: np.ndarray = self.data[:, : self.shape[1] // 2 + 1]
+        else:
+            show_data = self.data
+
         fig, ax = plt.subplots(
             dpi=100,
-            figsize=(self.shape[1] / 100, self.shape[0] / 100),
+            figsize=(show_data.shape[0] / 100, show_data.shape[1] / 100),
         )
 
-        ax.pcolor(self.data.T, cmap=color_map)
+        ax.pcolor(show_data.T, cmap=color_map)
         fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
         ax.axes.xaxis.set_ticks([])
         ax.axes.yaxis.set_ticks([])
@@ -242,7 +251,13 @@ class AmplitudeSpectrum(FrameSeries):
             raise RuntimeError("This feature can't convert to cepstrum.")
 
         return Cepstrum(
-            np.real(np.fft.ifft(np.log(self.data))),
+            np.real(
+                np.fft.ifft(
+                    np.log(
+                        self.data, out=np.zeros_like(self.data), where=self.data != 0
+                    )
+                )
+            ),
             self.frame_length,
             self.frame_shift,
             dB=None,
@@ -253,7 +268,7 @@ class AmplitudeSpectrum(FrameSeries):
         filter = librosa.filters.mel(sr=fs, n_fft=self.shape[1], n_mels=bins)
 
         return MelSpectrum(
-            np.dot(filter, self.data.T).T,
+            np.dot(filter, self.data[:, : self.shape[1] // 2 + 1].T).T,
             self.frame_length,
             self.frame_shift,
             dB=self.dB,
@@ -271,7 +286,13 @@ class MelSpectrum(FrameSeries):
             raise RuntimeError("This feature can't convert to cepstrum.")
 
         return MelCepstrum(
-            np.real(np.fft.ifft(np.log(self.data))),
+            np.real(
+                np.fft.ifft(
+                    np.log(
+                        self.data, out=np.zeros_like(self.data), where=self.data != 0
+                    )
+                )
+            ),
             self.frame_length,
             self.frame_shift,
             dB=None,
@@ -280,8 +301,8 @@ class MelSpectrum(FrameSeries):
 
 
 class Cepstrum(FrameSeries):
-    def to_spectrum(self) -> "Spectrum":
-        return Spectrum(
+    def to_spectrum(self) -> "AmplitudeSpectrum":
+        return AmplitudeSpectrum(
             np.exp(np.real(np.fft.fft(self.data))),
             self.frame_length,
             self.frame_shift,
@@ -311,31 +332,31 @@ class Cepstrum(FrameSeries):
         )
 
     def to_mel_cepstrum(self, bins: int, alpha: float) -> "MelCepstrum":
-        func = np.vectorize(self.__freqt)
-
+        # NOTE: 処理時間がかなりかかる
         return MelCepstrum(
-            func(self.data, self.shape[-1] // 2, bins, alpha),
+            self.__freqt(self.data, self.shape[1] // 2, bins, alpha),
             self.frame_length,
             self.frame_shift,
             dB=self.dB,
             power=self.power,
         )
 
+    # TODO: 高速化
     @staticmethod
     def __freqt(cepstrum: np.ndarray, n: int, bins: int, alpha: float):
-        beta = 1 - alpha**2
-        c: np.ndarray = cepstrum[: n + 1]
-        h_mem: np.ndarray = np.zeros(bins + 1)
-        h: np.ndarray = np.zeros(bins + 1)
+        beta = 1 - alpha ** 2
+        c: np.ndarray = cepstrum[:, : n + 1]
+        h_mem: np.ndarray = np.zeros((cepstrum.shape[0], bins + 1))
+        h: np.ndarray = np.zeros((cepstrum.shape[0], bins + 1))
 
         for k in range(n, -1, -1):  # [n 0]
-            h[0] = c[k] + alpha * h_mem[0]
-            h[1] = beta * h_mem[0] + alpha * h_mem[1]
+            h[:, 0] = c[:, k] + alpha * h_mem[:, 0]
+            h[:, 1] = beta * h_mem[:, 0] + alpha * h_mem[:, 1]
             for i in range(2, bins + 1):
-                h[i] = h_mem[i - 1] + alpha * (h_mem[i] - h[i - 1])
+                h[:, i] = h_mem[:, i - 1] + alpha * (h_mem[:, i] - h[:, i - 1])
             h_mem = np.copy(h)
 
-        return np.concatenate([h, np.fliplr([h])[0, 1:-1]])
+        return np.concatenate([h, np.fliplr(h)[:, 1:-1]])
 
 
 class MelCepstrum(FrameSeries):
