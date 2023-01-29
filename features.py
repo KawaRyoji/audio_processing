@@ -1,312 +1,29 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import librosa
 import numpy as np
-from matplotlib import pyplot as plt
 from scipy.signal.windows import get_window
+from typing_extensions import override
+
+from audio_processing.base import (
+    FrameSeries,
+    FreqDomainFrameSeries,
+    TimeDomainFrameSeries,
+)
 
 
-class FrameSeries:
-    """
-    フレーム単位の情報を扱うクラスです.
-    """
-
-    def __init__(
-        self,
-        frame_series: np.ndarray,
-        frame_length: int,
-        frame_shift: int,
-        dB: Optional[bool] = None,
-        power: Optional[bool] = None,
-    ) -> None:
-        """
-        Args:
-            frame_series (np.ndarray): フレーム単位の系列(2次元を想定)
-            frame_length (int): フレーム長
-            frame_shift (int): シフト長
-            dB (Optional[bool], optional): この系列がdB値であるか. `None`の場合dB値に変換できないことを表します.
-            power (Optional[bool], optional): この系列がパワーであるか. `None`の場合パワーに変換できないことを表します.
-        """
-        self.__frame_series = frame_series
-        self.__frame_length = frame_length
-        self.__frame_shift = frame_shift
-        self.__dB = dB
-        self.__power = power
-
-    @property
-    def frame_length(self) -> int:
-        """
-        フレーム長を返します.
-
-        Returns:
-            int: フレーム長
-        """
-        return self.__frame_length
-
-    @property
-    def frame_shift(self) -> int:
-        """
-        シフト長を返します.
-
-        Returns:
-            int: シフト長
-        """
-        return self.__frame_shift
-
-    @property
-    def shape(self) -> Tuple:
-        """
-        フレームの系列の形状を返します.
-
-        Returns:
-            Tuple: フレームの系列の形状
-        """
-        return self.__frame_series.shape
-
-    @property
-    def data(self) -> np.ndarray:
-        """
-        フレームの系列を返します.
-
-        Returns:
-            np.ndarray: フレームの系列
-        """
-        return self.__frame_series
-
-    @property
-    def dB(self) -> Optional[bool]:
-        """
-        この系列がdB値であるかを返します.
-        dB値に変換できない系列の場合Noneを返します.
-
-        Returns:
-            Optional[bool]: この系列がdB値であるかどうか. または`None`
-        """
-        return self.__dB
-
-    @property
-    def power(self) -> Optional[bool]:
-        """
-        この系列がパワーであるかを返します.
-        パワーに変換できない系列の場合Noneを返します.
-
-        Returns:
-            Optional[bool]: この系列がパワーであるかどうか. または`None`
-        """
-        return self.__power
-
-    @classmethod
-    def edge_point(
-        cls, index: int, frame_length: int, frame_shift: int
-    ) -> Tuple[int, int]:
-        """
-        `index`番目のフレームの両端のサンプル数を返します.
-
-        Args:
-            index (int): フレーム番号
-            frame_length (int): フレーム長
-            frame_shift (int): シフト長
-
-        Returns:
-            Tuple[int, int]: フレームの両端のサンプル数
-        """
-        start = index * frame_shift
-        end = start + frame_length
-        return start, end
-
-    def to_patches(self, frames: int) -> np.ndarray:
-        """
-        フレームの系列を`frames`ごとにグループ化し, パッチにしたものを返します.
-        フレーム数が足りない場合, パッチの大きさになるよう末尾にゼロ埋めされます.
-
-        ```python
-        data = np.arange(1000).reshape(20, 50)
-        print(data.shape) # (20, 50)
-        series = FrameSeries(data, 1, 1)
-        patches = series.to_patches(2)
-        print(patches.shape) # (10, 2, 50)
-        ```
-
-        Args:
-            frames (int): グループ化するフレーム数
-
-        Returns:
-            np.ndarray: パッチ化された系列 (パッチ数, `frames`, 元のデータの列数)
-        """
-        padded: np.ndarray = np.pad(
-            self.data,
-            ((0, (frames - (self.data.shape[0] % frames))), (0, 0)),
-        )
-
-        return padded.reshape(padded.shape[0] // frames, frames, padded.shape[1])
-
-    def linear_to_dB(self) -> "FrameSeries":
-        """
-        このフレームの系列をdB値に変換します.
-        すでにdB値である場合または変換できない系列の場合は変換せずそのまま返します.
-
-        Returns:
-            FrameSeries: dB値に変換されたフレームの系列
-        """
-        if self.dB is None:
-            print("This feature can't be a dB value.")
-            return self
-        elif self.dB:
-            print("This feature is already a dB value.")
-            return self
-
-        if self.power:
-            dB_func = lambda frame: 10 * np.log10(
-                frame, out=np.zeros_like(frame), where=frame != 0
-            )
-        else:
-            dB_func = lambda frame: 20 * np.log10(
-                frame, out=np.zeros_like(frame), where=frame != 0
-            )
-
-        return FrameSeries(
-            dB_func(self.data),
-            self.frame_length,
-            self.frame_shift,
-            dB=True,
-            power=self.power,
-        )
-
-    def dB_to_linear(self) -> "FrameSeries":
-        """
-        このフレームの系列をdB値からリニアに変換します.
-        すでにリニアである場合または変換できない系列の場合は変換せずそのまま返します.
-        元の系列がパワー値だった場合, パワー値として返されます.
-
-        Returns:
-            FrameSeries: リニアに変換されたフレームの系列. 元の系列がパワー値だった場合パワーの系列
-        """
-
-        if self.dB is None or not self.dB:
-            print("This feature is already a linear value.")
-            return self
-
-        if self.power:
-            linear_func = lambda x: np.power(x / 10, 10)
-        else:
-            linear_func = lambda x: np.power(x / 20, 10)
-
-        return FrameSeries(
-            linear_func(self.data),
-            self.frame_length,
-            self.frame_shift,
-            dB=False,
-            power=self.power,
-        )
-
-    def linear_to_power(self) -> "FrameSeries":
-        """
-        このフレームの系列をパワーに変換します.
-        すでにパワーである場合または変換できない系列の場合は変換せずそのまま返します.
-
-        Returns:
-            FrameSeries: パワーに変換されたフレームの系列
-        """
-        if self.power is None:
-            print("This feature can't convert to power.")
-            return self
-        elif self.power:
-            print("This feature is already converted to power.")
-            return self
-        elif self.dB:
-            print("This feature is already a dB value.")
-            return self
-
-        return FrameSeries(
-            np.power(self.data, 2),
-            self.frame_length,
-            self.frame_shift,
-            dB=self.dB,
-            power=True,
-        )
-
-    def power_to_linear(self) -> "FrameSeries":
-        """
-        このフレームの系列をパワーからリニアに変換します.
-        すでにリニアである場合または変換できない系列の場合は変換せずそのまま返します.
-
-        Returns:
-            FrameSeries: リニアに変換されたフレームの系列
-        """
-
-        if self.power is None or not self.power:
-            print("This feature is already linear value.")
-            return self
-        elif self.dB is None or self.dB:
-            print("This feature is a dB value.")
-            return self
-
-        return FrameSeries(
-            np.sqrt(self.data),
-            self.frame_length,
-            self.frame_shift,
-            dB=self.dB,
-            power=False,
-        )
-
-    def plot(
-        self,
-        up_to_nyquist=True,
-        show=True,
-        save_fig_path: Optional[str] = None,
-        color_map: str = "magma",
-    ) -> None:
-        """
-        フレームの系列を2次元プロットします.
-
-        Args:
-            up_to_nyquist (bool, optional): ナイキスト周波数(フレーム長 / 2 + 1点)までのプロットかどうか
-            show (bool, optional): プロットを表示するかどうか
-            save_fig_path (Optional[str], optional): プロットの保存先のパス. `None`の場合保存は行われません
-            color_map (str, optional): プロットに使用するカラーマップ
-        """
-        if up_to_nyquist:
-            show_data: np.ndarray = self.data[:, : self.shape[1] // 2 + 1]
-        else:
-            show_data = self.data
-
-        fig, ax = plt.subplots(
-            dpi=100,
-            figsize=(show_data.shape[0] / 100, show_data.shape[1] / 100),
-        )
-
-        ax.pcolor(show_data.T, cmap=color_map)
-        fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
-        ax.axes.xaxis.set_ticks([])
-        ax.axes.yaxis.set_ticks([])
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_visible(False)
-        ax.spines["top"].set_visible(False)
-        ax.spines["bottom"].set_visible(False)
-
-        if show:
-            plt.show()
-
-        if save_fig_path is not None:
-            plt.savefig(save_fig_path)
-
-        plt.close()
-
-    def __len__(self) -> int:
-        return self.__frame_series.__len__()
-
-
-class Waveform(FrameSeries):
+class Waveform(TimeDomainFrameSeries):
     """
     時間波形のフレームの系列を扱うクラスです.
     """
 
     @classmethod
-    def from_param(
+    def create(
         cls,
         time_series: np.ndarray,
         frame_length: int,
         frame_shift: int,
+        fs: int,
         padding: bool = True,
         padding_mode: str = "reflect",
         dtype=np.float32,
@@ -318,6 +35,7 @@ class Waveform(FrameSeries):
             time_series (np.ndarray): 時間波形(1次元)
             frame_length (int): フレーム長
             frame_shift (int): シフト長
+            fs (int): サンプリング周波数
             padding (bool, optional): 始めのフレームが分析窓の中心にするようにパディングするかどうか
             padding_mode (str, optional): パディングの手法
             dtype (_type_, optional): 保持するデータの型
@@ -337,19 +55,19 @@ class Waveform(FrameSeries):
 
         frames_np: np.ndarray = np.array(frames, dtype=dtype)
 
-        return cls(frames_np, frame_length, frame_shift, dB=None, power=None)
+        return cls(frames_np, frame_length, frame_shift, fs)
 
     def to_spectrum(
         self,
         fft_point: Optional[int] = None,
-        window: Union[str, np.ndarray] = "hann",
+        window: Union[str, np.ndarray, None] = "hann",
     ) -> "Spectrum":
         """
         時間波形のフレームの系列をスペクトル(位相情報含む)に変換します.
 
         Args:
             fft_point (Optional[int], optional): FFTポイント数. `None`の場合, フレーム長が使用されます
-            window (Union[str, np.ndarray], optional): 使用する窓関数. scipyの関数名での指定か自身で作成した窓関数を指定します
+            window (Union[str, np.ndarray, None], optional): 使用する窓関数. scipyの関数名での指定か自身で作成した窓関数を指定します. `None`の場合矩形窓を使用します
 
         Raises:
             TypeError: 窓関数の指定が`str`または`np.ndarray`でない場合
@@ -357,12 +75,14 @@ class Waveform(FrameSeries):
         Returns:
             Spectrum: スペクトル
         """
-        if type(window) is str:
+        if window is None:
+            window_func = np.ones(self.frame_length)
+        elif type(window) is str:
             window_func: np.ndarray = get_window(window, self.frame_length)
         elif type(window) is np.ndarray:
             window_func = window
         else:
-            raise TypeError("Type of window must str or np.ndarray")
+            raise TypeError("窓関数はstrもしくはnp.ndarrayでなければいけません.")
 
         if fft_point is None:
             fft_point = self.shape[1]
@@ -371,14 +91,50 @@ class Waveform(FrameSeries):
         spectrum = to_spectrum(self.data * window_func)
 
         return Spectrum(
-            spectrum, self.frame_length, self.frame_shift, dB=None, power=None
+            spectrum,
+            self.frame_length,
+            self.frame_shift,
+            fft_point,
+            self.fs,
         )
 
 
-class Spectrum(FrameSeries):
+class Spectrum(FreqDomainFrameSeries):
     """
     スペクトル(位相情報含む)のフレームの系列を扱うクラスです.
     """
+
+    def __init__(
+        self,
+        frame_series: np.ndarray,
+        frame_length: int,
+        frame_shift: int,
+        fft_point: int,
+        fs: int,
+    ) -> None:
+        super().__init__(
+            frame_series, frame_length, frame_shift, fft_point, fs, dB=False, dB=False
+        )
+
+    @override
+    def linear_to_dB(self) -> "Spectrum":
+        print("スペクトルはdB値に変換できません")
+        return self
+
+    @override
+    def dB_to_linear(self) -> "Spectrum":
+        print("このスペクトルはすでに線形値です")
+        return self
+
+    @override
+    def linear_to_power(self) -> "Spectrum":
+        print("パワースペクトルを求めたい場合、代わりに spectrum.to_amplitude().to_power() を使用してください")
+        return self
+
+    @override
+    def power_to_linear(self) -> "Spectrum":
+        print("このスペクトルはすでに線形値です")
+        return self
 
     def to_amplitude(self) -> "AmplitudeSpectrum":
         """
@@ -391,6 +147,8 @@ class Spectrum(FrameSeries):
             np.abs(self.data),
             self.frame_length,
             self.frame_shift,
+            self.fft_point,
+            self.fs,
             dB=False,
             power=False,
         )
@@ -409,12 +167,10 @@ class Spectrum(FrameSeries):
             np.angle(self.data, deg=not rad),
             self.frame_length,
             self.frame_shift,
-            dB=None,
-            power=None,
         )
 
 
-class AmplitudeSpectrum(FrameSeries):
+class AmplitudeSpectrum(FreqDomainFrameSeries):
     """
     振幅スペクトルのフレームの系列を扱うクラスです.
     """
@@ -424,13 +180,13 @@ class AmplitudeSpectrum(FrameSeries):
         振幅スペクトルをケプストラムに変換します.
 
         Raises:
-            RuntimeError: この系列がパワーもしくはdB値になっている場合
+            ValueError: この系列がパワーもしくはdB値になっている場合
 
         Returns:
             Cepstrum: ケプストラム
         """
         if self.power or self.dB:
-            raise RuntimeError("This feature can't convert to cepstrum.")
+            raise ValueError("この振幅スペクトルはケプストラムに変換できません.")
 
         return Cepstrum(
             np.real(
@@ -442,27 +198,27 @@ class AmplitudeSpectrum(FrameSeries):
             ),
             self.frame_length,
             self.frame_shift,
-            dB=None,
-            power=None,
+            self.fs,
         )
 
-    def to_mel(self, fs: int, bins: int) -> "MelSpectrum":
+    def to_mel(self, bins: int) -> "MelSpectrum":
         """
         振幅スペクトルをメルスペクトルに変換します.
 
         Args:
-            fs (int): サンプリング周波数
             bins (int): メルのビン数
 
         Returns:
             MelSpectrum: メルスペクトル
         """
-        filter = librosa.filters.mel(sr=fs, n_fft=self.shape[1], n_mels=bins)
-
+        filter = librosa.filters.mel(sr=self.fs, n_fft=self.fft_point, n_mels=bins)
+        melspectrum = np.dot(filter, self.data[:, : self.shape[1] // 2 + 1].T).T
         return MelSpectrum(
-            np.dot(filter, self.data[:, : self.shape[1] // 2 + 1].T).T,
+            FreqDomainFrameSeries.to_symmetry(melspectrum),
             self.frame_length,
             self.frame_shift,
+            self.fft_point,
+            self.fs,
             dB=self.dB,
             power=self.power,
         )
@@ -476,7 +232,7 @@ class PhaseSpectrum(FrameSeries):
     pass
 
 
-class MelSpectrum(FrameSeries):
+class MelSpectrum(FreqDomainFrameSeries):
     """
     メルスペクトルのフレームの系列を扱うクラスです.
     """
@@ -486,13 +242,13 @@ class MelSpectrum(FrameSeries):
         メルスペクトルをメルケプストラムに変換します.
 
         Raises:
-            RuntimeError: この値がパワーまたはdB値の場合
+            ValueError: この値がパワーまたはdB値の場合
 
         Returns:
             MelCepstrum: メルケプストラム
         """
         if self.power or self.dB:
-            raise RuntimeError("This feature can't convert to cepstrum.")
+            raise ValueError("このメルスペクトルはメルケプストラムに変換できません.")
 
         return MelCepstrum(
             np.real(
@@ -504,27 +260,34 @@ class MelSpectrum(FrameSeries):
             ),
             self.frame_length,
             self.frame_shift,
-            dB=None,
-            power=None,
+            self.fs,
         )
 
 
-class Cepstrum(FrameSeries):
+class Cepstrum(TimeDomainFrameSeries):
     """
     ケプストラムのフレームの系列を扱うクラスです.
     """
 
-    def to_spectrum(self) -> "AmplitudeSpectrum":
+    def to_spectrum(self, fft_point: Optional[int] = None) -> "AmplitudeSpectrum":
         """
         ケプストラムから振幅スペクトルに変換します.
+
+        Args:
+            fft_point (Optional[int], optional): FFTポイント数
 
         Returns:
             AmplitudeSpectrum: 振幅スペクトル
         """
+        if fft_point is None:
+            fft_point = self.data.shape[1]
+
         return AmplitudeSpectrum(
-            np.exp(np.real(np.fft.fft(self.data))),
+            np.exp(np.real(np.fft.fft(self.data, n=fft_point))),
             self.frame_length,
             self.frame_shift,
+            fft_point,
+            self.fs,
             dB=False,
             power=False,
         )
@@ -549,15 +312,18 @@ class Cepstrum(FrameSeries):
                 (self.data[:, :order], pad, self.data[:, -order:]), axis=1
             )
         else:
-            pad = np.zeros((self.shape[0], order), dtype=self.data.dtype)
-            liftered = np.concatenate((pad, self.data[:, order:-order], pad), axis=1)
+            liftered = np.pad(
+                self.data[:, order:-order],
+                ((0, 0), (order, order)),
+                "constant",
+                constant_values=0,
+            )
 
         return Cepstrum(
             liftered,
             self.frame_length,
             self.frame_shift,
-            dB=self.dB,
-            power=self.power,
+            self.fs,
         )
 
     def to_mel_cepstrum(self, bins: int, alpha: float) -> "MelCepstrum":
@@ -567,25 +333,26 @@ class Cepstrum(FrameSeries):
 
         Args:
             bins (int): メルのビン数
-            alpha (float): 伸縮率
+            alpha (float): 伸縮率 (alpha > 0)
 
         Returns:
             MelCepstrum: メルケプストラム
         """
+        melcepstrum = self._freqt(self.data, self.shape[1] // 2 + 1, bins, alpha)
+
         # NOTE: 処理時間がかなりかかる
         return MelCepstrum(
-            self.__freqt(self.data, self.shape[1] // 2, bins, alpha),
+            FreqDomainFrameSeries.to_symmetry(melcepstrum),
             self.frame_length,
             self.frame_shift,
-            dB=self.dB,
-            power=self.power,
+            self.fs,
         )
 
     # TODO: 高速化
     @staticmethod
-    def __freqt(cepstrum: np.ndarray, n: int, bins: int, alpha: float) -> np.ndarray:
+    def _freqt(cepstrum: np.ndarray, n: int, bins: int, alpha: float) -> np.ndarray:
         """
-        ケプストラムからメルケプストラムにするアルゴリズム..
+        ケプストラムを伸縮するアルゴリズム.
 
         Args:
             cepstrum (np.ndarray): 変換元のケプストラム
@@ -596,8 +363,8 @@ class Cepstrum(FrameSeries):
         Returns:
             np.ndarray: 伸縮されたケプストラム
         """
-        beta = 1 - alpha ** 2
-        c: np.ndarray = cepstrum[:, : n + 1]
+        beta = 1 - alpha**2
+        c: np.ndarray = cepstrum[:, :n]
         h_mem: np.ndarray = np.zeros((cepstrum.shape[0], bins + 1))
         h: np.ndarray = np.zeros((cepstrum.shape[0], bins + 1))
 
@@ -608,10 +375,10 @@ class Cepstrum(FrameSeries):
                 h[:, i] = h_mem[:, i - 1] + alpha * (h_mem[:, i] - h[:, i - 1])
             h_mem = np.copy(h)
 
-        return np.concatenate([h, np.fliplr(h)[:, 1:-1]])
+        return h
 
 
-class MelCepstrum(FrameSeries):
+class MelCepstrum(TimeDomainFrameSeries):
     """
     メルケプストラムのフレームの系列を扱うクラスです.
     """
@@ -636,6 +403,22 @@ class MelCepstrum(FrameSeries):
             spectrum,
             self.frame_length,
             self.frame_shift,
+            fft_point,
+            self.fs,
             dB=False,
             power=False,
+        )
+
+    def to_cepstrum(self, alpha: int) -> "Cepstrum":
+        """
+        メルケプストラムをケプストラムに変換します.
+
+        Args:
+            alpha (int): メルケプストラムを生成した伸縮率 (alpha > 0)
+
+        Returns:
+            Cepstrum: ケプストラム
+        """
+        cepstrum = Cepstrum._freqt(
+            self.data, self.shape[1] // 2 + 1, self.shape[1] // 2 + 1, -alpha
         )
