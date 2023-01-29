@@ -116,6 +116,30 @@ class FrameSeries:
 
         return padded.reshape(padded.shape[0] // frames, frames, padded.shape[1])
 
+    def save(self, path: str, compress: bool = False) -> "FrameSeries":
+        if compress:
+            np.savez_compressed(
+                path,
+                frames=self.__frame_series,
+                frame_length=self.__frame_length,
+                frame_shift=self.__frame_shift,
+            )
+        else:
+            np.savez(
+                path,
+                frames=self.__frame_series,
+                frame_length=self.__frame_length,
+                frame_shift=self.__frame_shift,
+            )
+
+        return self
+
+    @classmethod
+    def from_npz(cls, path: str) -> "FrameSeries":
+        file = np.load(path, allow_pickle=True)
+
+        return cls(file["frames"], file["frame_length"], file["frame_shift"])
+
     def plot(
         self,
         up_to_nyquist=True,

@@ -5,7 +5,7 @@ import numpy as np
 from scipy.signal.windows import get_window
 from typing_extensions import override
 
-from audio_processing.base import (
+from base import (
     FrameSeries,
     FreqDomainFrameSeries,
     TimeDomainFrameSeries,
@@ -169,7 +169,8 @@ class Spectrum(FreqDomainFrameSeries):
             self.frame_shift,
         )
 
-
+    # TODO: 振幅スペクトルと位相スペクトルからスペクトルを作成する
+    
 class AmplitudeSpectrum(FreqDomainFrameSeries):
     """
     振幅スペクトルのフレームの系列を扱うクラスです.
@@ -421,4 +422,11 @@ class MelCepstrum(TimeDomainFrameSeries):
         """
         cepstrum = Cepstrum._freqt(
             self.data, self.shape[1] // 2 + 1, self.shape[1] // 2 + 1, -alpha
+        )
+
+        return Cepstrum(
+            cepstrum,
+            self.frame_length,
+            self.frame_shift,
+            self.fs,
         )
