@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 from typing_extensions import override
 import numpy as np
 import matplotlib.pyplot as plt
@@ -116,33 +116,71 @@ class FrameSeries:
 
         return padded.reshape(padded.shape[0] // frames, frames, padded.shape[1])
 
+    def apply(
+        self, func: Callable[[np.ndarray], np.ndarray], axis: int = 1
+    ) -> "FrameSeries":
+        """
+        `axis`に従って関数`func`を適用します.
+
+        Args:
+            func (Callable[[np.ndarray], np.ndarray]): 適用する関数
+            axis (int, optional): 適用する軸
+
+        Returns:
+            FrameSeries: 関数を適用した後のフレーム系列
+        """
+        return self.copy_with(
+            frame_series=np.apply_along_axis(func, axis=axis, arr=self.data)
+        )
+
+    def properties(self) -> dict[str, Any]:
+        """
+        このフレーム系列を生成したプロパティを辞書形式で返します
+
+        Returns:
+            dict[str, Any]: プロパティの辞書
+        """
+        return {
+            "frame_length": self.__frame_length,
+            "frame_shift": self.__frame_shift,
+        }
+
     def save(self, path: str, compress: bool = False) -> "FrameSeries":
+        """
+        このフレーム系列とそれを生成したプロパティをnpzファイルに保存します.
+
+        Args:
+            path (str): 保存先のパス
+            compress (bool, optional): 圧縮するかどうか
+
+        Returns:
+            FrameSeries: 自身のインスタンス
+        """
+
         if compress:
-            np.savez_compressed(
-                path,
-                frames=self.__frame_series,
-                frame_length=self.__frame_length,
-                frame_shift=self.__frame_shift,
-            )
+            np.savez_compressed(path, frames=self.__frame_series, **self.properties())
         else:
-            np.savez(
-                path,
-                frames=self.__frame_series,
-                frame_length=self.__frame_length,
-                frame_shift=self.__frame_shift,
-            )
+            np.savez(path, frames=self.__frame_series, **self.properties())
 
         return self
 
     @classmethod
     def from_npz(cls, path: str) -> "FrameSeries":
+        """
+        npzファイルからインスタンスを読み込みます.
+
+        Args:
+            path (str): npzファイルのパス
+
+        Returns:
+            FrameSeries: 読み込んだインスタンス
+        """
         file = np.load(path, allow_pickle=True)
 
         return cls(file["frames"], file["frame_length"], file["frame_shift"])
 
     def plot(
         self,
-        up_to_nyquist=True,
         show=True,
         save_fig_path: Optional[str] = None,
         color_map: str = "magma",
@@ -151,25 +189,19 @@ class FrameSeries:
         フレームの系列を2次元プロットします.
 
         Args:
-            up_to_nyquist (bool, optional): ナイキスト周波数(フレーム長 / 2 + 1点)までのプロットかどうか
             show (bool, optional): プロットを表示するかどうか
             save_fig_path (Optional[str], optional): プロットの保存先のパス. `None`の場合保存は行われません
             color_map (str, optional): プロットに使用するカラーマップ
 
         Returns:
-            FrameSeries: このインスタンス
+            FrameSeries: 自身のインスタンス
         """
-        if up_to_nyquist:
-            show_data: np.ndarray = self.data[:, : self.shape[1] // 2 + 1]
-        else:
-            show_data = self.data
-
         fig, ax = plt.subplots(
             dpi=100,
-            figsize=(show_data.shape[0] / 100, show_data.shape[1] / 100),
+            figsize=(self.shape[0] / 100, self.shape[1] / 100),
         )
 
-        ax.pcolor(show_data.T, cmap=color_map)
+        ax.pcolor(self.data.T, cmap=color_map)
         fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
         ax.axes.xaxis.set_ticks([])
         ax.axes.yaxis.set_ticks([])
@@ -195,7 +227,7 @@ class FrameSeries:
         frame_shift: Optional[int] = None,
     ) -> "FrameSeries":
         """
-        引数の値を使ってこのインスタンスをコピーします.
+        引数の値を使って自身のインスタンスをコピーします.
 
         Args:
             frame_series (Optional[np.ndarray], optional): フレーム単位の系列
@@ -213,7 +245,7 @@ class FrameSeries:
 
     def equals_property(self, other: "FrameSeries") -> None:
         """
-        このインスタンスのプロパティともう一方が一致するかを確認します.
+        自身のインスタンスのプロパティともう一方が一致するかを確認します.
 
         Args:
             other (FrameSeries): 一方のインスタンス
@@ -306,6 +338,17 @@ class TimeDomainFrameSeries(FrameSeries):
         """
         return self.__fs
 
+    # 以下継承したメソッド
+
+    def plot(
+        self,
+        up_to_nyquist=True,
+        show=True,
+        save_fig_path: Optional[str] = None,
+        color_map: str = "magma",
+    ) -> "TimeDomainFrameSeries":
+        return super().plot(up_to_nyquist, show, save_fig_path, color_map)
+
     @override
     def equals_property(self, other: "TimeDomainFrameSeries") -> None:
         super().equals_property(other)
@@ -324,7 +367,7 @@ class TimeDomainFrameSeries(FrameSeries):
         fs: Optional[int] = None,
     ) -> "TimeDomainFrameSeries":
         """
-        引数の値を使ってこのインスタンスをコピーします.
+        引数の値を使って自身のインスタンスをコピーします.
 
         Args:
             frame_series (Optional[np.ndarray], optional): フレーム単位の系列
@@ -342,37 +385,35 @@ class TimeDomainFrameSeries(FrameSeries):
 
         return TimeDomainFrameSeries(frame_series, frame_length, frame_shift, fs)
 
+    @override
+    def properties(self) -> dict[str, Any]:
+        properties = super().properties()
+        properties.update({"fs": self.__fs})
+        return properties
+
+    def save(self, path: str, compress: bool = False) -> "TimeDomainFrameSeries":
+        return super().save(path, compress=compress)
+
+    @override
+    @classmethod
+    def from_npz(cls, path: str) -> "TimeDomainFrameSeries":
+        file = np.load(path, allow_pickle=True)
+
+        return cls(
+            file["frames"], file["frame_length"], file["frame_shift"], file["fs"]
+        )
+
     def __add__(self, other: Any) -> "TimeDomainFrameSeries":
-        if not isinstance(other, self.__class__):
-            raise TypeError("加算は同じクラスである必要があります. other:{}".format(other.__class__))
-
-        self.equals_property(other)
-
-        return self.copy_with(frame_series=self.data + other.data)
-
-    def __sub__(self, other: Any) -> "TimeDomainFrameSeries":
-        if not isinstance(other, self.__class__):
-            raise TypeError("減算は同じクラスである必要があります. other:{}".format(other.__class__))
-
-        self.equals_property(other)
-
-        return self.copy_with(frame_series=self.data - other.data)
+        return super().__add__(other)
 
     def __mul__(self, other: Any) -> "TimeDomainFrameSeries":
-        if not isinstance(other, self.__class__):
-            raise TypeError("乗算は同じクラスである必要があります. other:{}".format(other.__class__))
+        return super().__mul__(other)
 
-        self.equals_property(other)
-
-        return self.copy_with(frame_series=self.data * other.data)
+    def __sub__(self, other: Any) -> "TimeDomainFrameSeries":
+        return super().__sub__(other)
 
     def __truediv__(self, other: Any) -> "TimeDomainFrameSeries":
-        if not isinstance(other, self.__class__):
-            raise TypeError("乗算は同じクラスである必要があります. other:{}".format(other.__class__))
-
-        self.equals_property(other)
-
-        return self.copy_with(frame_series=self.data / other.data)
+        return super().__truediv__(other)
 
 
 class FreqDomainFrameSeries(FrameSeries):
@@ -568,6 +609,48 @@ class FreqDomainFrameSeries(FrameSeries):
         """
         return np.concatenate([series, np.fliplr(series)[:, 1:-1]], axis=1)
 
+    # 以下継承したメソッド
+
+    @override
+    def plot(
+        self,
+        up_to_nyquist=True,
+        show=True,
+        save_fig_path: Optional[str] = None,
+        color_map: str = "magma",
+    ) -> "FreqDomainFrameSeries":
+        return super().plot(up_to_nyquist, show, save_fig_path, color_map)
+
+    def save(self, path: str, compress: bool = False) -> "FreqDomainFrameSeries":
+        return super().save(path, compress=compress)
+
+    @override
+    def properties(self) -> dict[str, Any]:
+        properties = super().properties()
+        properties.update(
+            {
+                "fs": self.__fs,
+                "fft_point": self.__fft_point,
+                "dB": self.__dB,
+                "power": self.__power,
+            }
+        )
+        return properties
+
+    @override
+    @classmethod
+    def from_npz(cls, path: str) -> "FreqDomainFrameSeries":
+        file = np.load(path, allow_pickle=True)
+        return cls(
+            file["frames"],
+            file["frame_length"],
+            file["frame_shift"],
+            file["fft_point"],
+            file["fs"],
+            dB=file["dB"],
+            power=file["power"],
+        )
+
     @override
     def equals_property(self, other: "FreqDomainFrameSeries") -> None:
         super().equals_property(other)
@@ -604,7 +687,7 @@ class FreqDomainFrameSeries(FrameSeries):
         power: Optional[bool] = None,
     ) -> "FreqDomainFrameSeries":
         """
-        引数の値を使ってこのインスタンスをコピーします.
+        引数の値を使って自身のインスタンスをコピーします.
 
         Args:
             frame_series (Optional[np.ndarray], optional): フレーム単位の系列
@@ -631,33 +714,13 @@ class FreqDomainFrameSeries(FrameSeries):
         )
 
     def __add__(self, other: Any) -> "FreqDomainFrameSeries":
-        if not isinstance(other, self.__class__):
-            raise TypeError("加算は同じクラスである必要があります. other:{}".format(other.__class__))
-
-        self.equals_property(other)
-
-        return self.copy_with(frame_series=self.data + other.data)
-
-    def __sub__(self, other: Any) -> "FreqDomainFrameSeries":
-        if not isinstance(other, self.__class__):
-            raise TypeError("減算は同じクラスである必要があります. other:{}".format(other.__class__))
-
-        self.equals_property(other)
-
-        return self.copy_with(frame_series=self.data - other.data)
+        return super().__add__(other)
 
     def __mul__(self, other: Any) -> "FreqDomainFrameSeries":
-        if not isinstance(other, self.__class__):
-            raise TypeError("乗算は同じクラスである必要があります. other:{}".format(other.__class__))
+        return super().__mul__(other)
 
-        self.equals_property(other)
-
-        return self.copy_with(frame_series=self.data * other.data)
+    def __sub__(self, other: Any) -> "FreqDomainFrameSeries":
+        return super().__sub__(other)
 
     def __truediv__(self, other: Any) -> "FreqDomainFrameSeries":
-        if not isinstance(other, self.__class__):
-            raise TypeError("乗算は同じクラスである必要があります. other:{}".format(other.__class__))
-
-        self.equals_property(other)
-
-        return self.copy_with(frame_series=self.data / other.data)
+        return super().__truediv__(other)

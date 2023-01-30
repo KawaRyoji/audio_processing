@@ -2,14 +2,9 @@ from typing import Optional, Union
 
 import librosa
 import numpy as np
+from base import FrameSeries, FreqDomainFrameSeries, TimeDomainFrameSeries
 from scipy.signal.windows import get_window
 from typing_extensions import override
-
-from base import (
-    FrameSeries,
-    FreqDomainFrameSeries,
-    TimeDomainFrameSeries,
-)
 
 
 class Waveform(TimeDomainFrameSeries):
@@ -26,7 +21,7 @@ class Waveform(TimeDomainFrameSeries):
         fs: int,
         padding: bool = True,
         padding_mode: str = "reflect",
-        dtype=np.float32,
+        dtype: np.dtype = np.float32,
     ) -> "Waveform":
         """
         時間波形から各種パラメータを使ってフレームの系列に変換し, `Waveform`インスタンスを生成します.
@@ -36,7 +31,7 @@ class Waveform(TimeDomainFrameSeries):
             frame_length (int): フレーム長
             frame_shift (int): シフト長
             fs (int): サンプリング周波数
-            padding (bool, optional): 始めのフレームが分析窓の中心にするようにパディングするかどうか
+            padding (bool, optional): フレームが分析窓の中心にするようにパディングするかどうか
             padding_mode (str, optional): パディングの手法
             dtype (_type_, optional): 保持するデータの型
 
@@ -169,8 +164,52 @@ class Spectrum(FreqDomainFrameSeries):
             self.frame_shift,
         )
 
+    def to_waveform(self) -> "Waveform":
+        return Waveform(
+            np.real(np.fft.ifft(self.data)),
+            self.frame_length,
+            self.frame_shift,
+            self.fs,
+        )
+
     # TODO: 振幅スペクトルと位相スペクトルからスペクトルを作成する
-    
+    @classmethod
+    def restore(
+        cls, amplitude: "AmplitudeSpectrum", phase: "PhaseSpectrum"
+    ) -> "Spectrum":
+        if amplitude.dB or amplitude.power:
+            raise ValueError("振幅スペクトルを線形値にしてください.")
+
+        if amplitude.shape != phase.shape:
+            raise ValueError(
+                "振幅スペクトルと位相スペクトルの次元が異なっています. amplitude:{} phase:{}".format(
+                    amplitude.shape, phase.shape
+                )
+            )
+
+        if amplitude.frame_length != phase.frame_length:
+            raise ValueError(
+                "振幅スペクトルと位相スペクトルのフレーム長が異なっています. amplitude:{} phase:{}".format(
+                    amplitude.frame_length, phase.frame_length
+                )
+            )
+
+        if amplitude.frame_shift != phase.frame_shift:
+            raise ValueError(
+                "振幅スペクトルと位相スペクトルのフレームシフトが異なっています. amplitude:{} phase:{}".format(
+                    amplitude.frame_shift, phase.frame_shift
+                )
+            )
+
+        return Spectrum(
+            np.multiply(amplitude, np.exp(1j * phase)),
+            amplitude.frame_length,
+            amplitude.frame_shift,
+            amplitude.fft_point,
+            amplitude.fs,
+        )
+
+
 class AmplitudeSpectrum(FreqDomainFrameSeries):
     """
     振幅スペクトルのフレームの系列を扱うクラスです.
