@@ -108,7 +108,13 @@ class Spectrum(FreqDomainFrameSeries):
         fs: int,
     ) -> None:
         super().__init__(
-            frame_series, frame_length, frame_shift, fft_point, fs, dB=False, dB=False
+            frame_series,
+            frame_length,
+            frame_shift,
+            fft_point,
+            fs,
+            dB=False,
+            power=False,
         )
 
     @override
