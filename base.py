@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from typing import Any, Callable, Optional, Tuple
 from typing_extensions import override
 import numpy as np
@@ -62,7 +64,7 @@ class FrameSeries:
         return self.__frame_series.shape
 
     @property
-    def data(self) -> np.ndarray:
+    def frame_series(self) -> np.ndarray:
         """
         フレームの系列を返します.
 
@@ -110,8 +112,8 @@ class FrameSeries:
             np.ndarray: パッチ化された系列 (パッチ数, `frames`, 元のデータの列数)
         """
         padded: np.ndarray = np.pad(
-            self.data,
-            ((0, (frames - (self.data.shape[0] % frames))), (0, 0)),
+            self.frame_series,
+            ((0, (frames - (self.frame_series.shape[0] % frames))), (0, 0)),
         )
 
         return padded.reshape(padded.shape[0] // frames, frames, padded.shape[1])
@@ -130,7 +132,7 @@ class FrameSeries:
             FrameSeries: 関数を適用した後のフレーム系列
         """
         return self.copy_with(
-            frame_series=np.apply_along_axis(func, axis=axis, arr=self.data)
+            frame_series=np.apply_along_axis(func, axis=axis, arr=self.frame_series)
         )
 
     def properties(self) -> dict[str, Any]:
@@ -141,26 +143,37 @@ class FrameSeries:
             dict[str, Any]: プロパティの辞書
         """
         return {
-            "frame_length": self.__frame_length,
-            "frame_shift": self.__frame_shift,
+            "frame_length": self.frame_length,
+            "frame_shift": self.frame_shift,
         }
 
-    def save(self, path: str, compress: bool = False) -> "FrameSeries":
+    def save(
+        self, path: str, compress: bool = False, overwrite: bool = False
+    ) -> "FrameSeries":
         """
         このフレーム系列とそれを生成したプロパティをnpzファイルに保存します.
+        `overwrite`が`False`の場合かつすでにファイルが存在する場合上書きされません.
 
         Args:
             path (str): 保存先のパス
             compress (bool, optional): 圧縮するかどうか
+            overwrite (bool, optional): 上書きを許可するかどうか
 
         Returns:
             FrameSeries: 自身のインスタンス
         """
+        if not overwrite and os.path.exists(path):
+            print(path, "は既に存在します")
+            return self
+
+        Path(path).parent.mkdir(exist_ok=True)
 
         if compress:
-            np.savez_compressed(path, frames=self.__frame_series, **self.properties())
+            np.savez_compressed(
+                path, frame_series=self.frame_series, **self.properties()
+            )
         else:
-            np.savez(path, frames=self.__frame_series, **self.properties())
+            np.savez(path, frame_series=self.frame_series, **self.properties())
 
         return self
 
@@ -177,11 +190,11 @@ class FrameSeries:
         """
         file = np.load(path, allow_pickle=True)
 
-        return cls(file["frames"], file["frame_length"], file["frame_shift"])
+        return cls(file["frame_series"], file["frame_length"], file["frame_shift"])
 
     def plot(
         self,
-        show=True,
+        show: bool = True,
         save_fig_path: Optional[str] = None,
         color_map: str = "magma",
     ) -> "FrameSeries":
@@ -201,7 +214,7 @@ class FrameSeries:
             figsize=(self.shape[0] / 100, self.shape[1] / 100),
         )
 
-        ax.pcolor(self.data.T, cmap=color_map)
+        ax.pcolor(self.frame_series.T, cmap=color_map)
         fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
         ax.axes.xaxis.set_ticks([])
         ax.axes.yaxis.set_ticks([])
@@ -237,9 +250,9 @@ class FrameSeries:
         Returns:
             FrameSeries: コピーしたインスタンス
         """
-        frame_series = self.__frame_series if frame_series is None else frame_series
-        frame_length = self.__frame_length if frame_length is None else frame_length
-        frame_shift = self.__frame_shift if frame_shift is None else frame_shift
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_length = self.frame_length if frame_length is None else frame_length
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
 
         return FrameSeries(frame_series, frame_length, frame_shift)
 
@@ -272,8 +285,18 @@ class FrameSeries:
                 )
             )
 
+    def dump(self) -> "FrameSeries":
+        """
+        自身のインスタンスの内容を出力します.
+
+        Returns:
+            FrameSeries: 自身のインスタンス
+        """
+        print(self.__str__())
+        return self
+
     def __len__(self) -> int:
-        return self.__frame_series.__len__()
+        return self.frame_series.__len__()
 
     def __add__(self, other: Any) -> "FrameSeries":
         if not isinstance(other, self.__class__):
@@ -283,7 +306,7 @@ class FrameSeries:
 
         self.equals_property(other)
 
-        return self.copy_with(frame_series=self.data + other.data)
+        return self.copy_with(frame_series=self.frame_series + other.frame_series)
 
     def __sub__(self, other: Any) -> "FrameSeries":
         if not isinstance(other, self.__class__):
@@ -291,7 +314,7 @@ class FrameSeries:
 
         self.equals_property(other)
 
-        return self.copy_with(frame_series=self.data - other.data)
+        return self.copy_with(frame_series=self.frame_series - other.frame_series)
 
     def __mul__(self, other: Any) -> "FrameSeries":
         if not isinstance(other, self.__class__):
@@ -299,7 +322,7 @@ class FrameSeries:
 
         self.equals_property(other)
 
-        return self.copy_with(frame_series=self.data * other.data)
+        return self.copy_with(frame_series=self.frame_series * other.frame_series)
 
     def __truediv__(self, other: Any) -> "FrameSeries":
         if not isinstance(other, self.__class__):
@@ -307,7 +330,18 @@ class FrameSeries:
 
         self.equals_property(other)
 
-        return self.copy_with(frame_series=self.data / other.data)
+        return self.copy_with(frame_series=self.frame_series / other.frame_series)
+
+    def __str__(self) -> str:
+        string = "Feature Summary\n"
+        string += "------------------------------------\n"
+        string += "type: " + self.__class__.__name__ + "\n"
+        string += "data shape: {}\n".format(self.shape)
+        for feature, value in self.properties().items():
+            string += "{}: {}\n".format(feature, value)
+        string += "------------------------------------\n"
+
+        return string + "\n"
 
 
 class TimeDomainFrameSeries(FrameSeries):
@@ -342,12 +376,11 @@ class TimeDomainFrameSeries(FrameSeries):
 
     def plot(
         self,
-        up_to_nyquist=True,
-        show=True,
+        show: bool = True,
         save_fig_path: Optional[str] = None,
         color_map: str = "magma",
     ) -> "TimeDomainFrameSeries":
-        return super().plot(up_to_nyquist, show, save_fig_path, color_map)
+        return super().plot(show=show, save_fig_path=save_fig_path, color_map=color_map)
 
     @override
     def equals_property(self, other: "TimeDomainFrameSeries") -> None:
@@ -378,10 +411,10 @@ class TimeDomainFrameSeries(FrameSeries):
         Returns:
             TimeDomainFrameSeries: コピーしたインスタンス
         """
-        frame_series = self.__frame_series if frame_series is None else frame_series
-        frame_length = self.__frame_length if frame_length is None else frame_length
-        frame_shift = self.__frame_shift if frame_shift is None else frame_shift
-        fs = self.__fs if fs is None else fs
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_length = self.frame_length if frame_length is None else frame_length
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
+        fs = self.fs if fs is None else fs
 
         return TimeDomainFrameSeries(frame_series, frame_length, frame_shift, fs)
 
@@ -391,8 +424,10 @@ class TimeDomainFrameSeries(FrameSeries):
         properties.update({"fs": self.__fs})
         return properties
 
-    def save(self, path: str, compress: bool = False) -> "TimeDomainFrameSeries":
-        return super().save(path, compress=compress)
+    def save(
+        self, path: str, compress: bool = False, overwrite: bool = False
+    ) -> "TimeDomainFrameSeries":
+        return super().save(path, compress=compress, overwrite=overwrite)
 
     @override
     @classmethod
@@ -400,8 +435,11 @@ class TimeDomainFrameSeries(FrameSeries):
         file = np.load(path, allow_pickle=True)
 
         return cls(
-            file["frames"], file["frame_length"], file["frame_shift"], file["fs"]
+            file["frame_series"], file["frame_length"], file["frame_shift"], file["fs"]
         )
+
+    def dump(self) -> "TimeDomainFrameSeries":
+        return super().dump()
 
     def __add__(self, other: Any) -> "TimeDomainFrameSeries":
         return super().__add__(other)
@@ -506,15 +544,7 @@ class FreqDomainFrameSeries(FrameSeries):
                 frame, out=np.zeros_like(frame), where=frame != 0
             )
 
-        return FreqDomainFrameSeries(
-            dB_func(self.data),
-            self.frame_length,
-            self.frame_shift,
-            self.fft_point,
-            self.fs,
-            dB=True,
-            power=self.power,
-        )
+        return self.copy_with(frame_series=dB_func(self.frame_series), dB=True)
 
     def dB_to_linear(self) -> "FreqDomainFrameSeries":
         """
@@ -535,15 +565,7 @@ class FreqDomainFrameSeries(FrameSeries):
         else:
             linear_func = lambda x: np.power(x / 20, 10)
 
-        return FreqDomainFrameSeries(
-            linear_func(self.data),
-            self.frame_length,
-            self.frame_shift,
-            self.fft_point,
-            self.fs,
-            dB=False,
-            power=self.power,
-        )
+        return self.copy_with(frame_series=linear_func(self.frame_series), dB=False)
 
     def linear_to_power(self) -> "FreqDomainFrameSeries":
         """
@@ -560,15 +582,7 @@ class FreqDomainFrameSeries(FrameSeries):
             print("この特徴量はdB値です.")
             return self
 
-        return FreqDomainFrameSeries(
-            np.power(self.data, 2),
-            self.frame_length,
-            self.frame_shift,
-            self.fft_point,
-            self.fs,
-            dB=self.dB,
-            power=True,
-        )
+        return self.copy_with(frame_series=np.power(self.frame_series, 2), power=True)
 
     def power_to_linear(self) -> "FreqDomainFrameSeries":
         """
@@ -586,15 +600,7 @@ class FreqDomainFrameSeries(FrameSeries):
             print("この特徴量はdB値です.")
             return self
 
-        return FreqDomainFrameSeries(
-            np.sqrt(self.data),
-            self.frame_length,
-            self.frame_shift,
-            self.fft_point,
-            self.fs,
-            dB=self.dB,
-            power=False,
-        )
+        return self.copy_with(frame_series=np.sqrt(self.frame_series), power=False)
 
     @staticmethod
     def to_symmetry(series: np.ndarray) -> np.ndarray:
@@ -614,25 +620,65 @@ class FreqDomainFrameSeries(FrameSeries):
     @override
     def plot(
         self,
-        up_to_nyquist=True,
-        show=True,
+        up_to_nyquist: bool = True,
+        show: bool = True,
         save_fig_path: Optional[str] = None,
         color_map: str = "magma",
     ) -> "FreqDomainFrameSeries":
-        return super().plot(up_to_nyquist, show, save_fig_path, color_map)
+        """
+        フレームの系列を2次元プロットします.
 
-    def save(self, path: str, compress: bool = False) -> "FreqDomainFrameSeries":
-        return super().save(path, compress=compress)
+        Args:
+            show (bool, optional): プロットを表示するかどうか
+            save_fig_path (Optional[str], optional): プロットの保存先のパス. `None`の場合保存は行われません
+            color_map (str, optional): プロットに使用するカラーマップ
+
+        Returns:
+            FrameSeries: 自身のインスタンス
+        """
+        fig, ax = plt.subplots(
+            dpi=100,
+            figsize=(self.shape[0] / 100, self.shape[1] / 100),
+        )
+
+        if up_to_nyquist:
+            show_data = self.frame_series[:, : self.shape[1] // 2 + 1]
+        else:
+            show_data = self.frame_series
+
+        ax.pcolor(show_data.T, cmap=color_map)
+        fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
+        ax.axes.xaxis.set_ticks([])
+        ax.axes.yaxis.set_ticks([])
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["bottom"].set_visible(False)
+
+        if show:
+            plt.show()
+
+        if save_fig_path is not None:
+            plt.savefig(save_fig_path)
+
+        plt.close()
+
+        return self
+
+    def save(
+        self, path: str, compress: bool = False, overwrite: bool = False
+    ) -> "FreqDomainFrameSeries":
+        return super().save(path, compress=compress, overwrite=overwrite)
 
     @override
     def properties(self) -> dict[str, Any]:
         properties = super().properties()
         properties.update(
             {
-                "fs": self.__fs,
-                "fft_point": self.__fft_point,
-                "dB": self.__dB,
-                "power": self.__power,
+                "fs": self.fs,
+                "fft_point": self.fft_point,
+                "dB": self.dB,
+                "power": self.power,
             }
         )
         return properties
@@ -642,7 +688,7 @@ class FreqDomainFrameSeries(FrameSeries):
     def from_npz(cls, path: str) -> "FreqDomainFrameSeries":
         file = np.load(path, allow_pickle=True)
         return cls(
-            file["frames"],
+            file["frame_series"],
             file["frame_length"],
             file["frame_shift"],
             file["fft_point"],
@@ -701,17 +747,20 @@ class FreqDomainFrameSeries(FrameSeries):
         Returns:
             FreqDomainFrameSeries: コピーしたインスタンス
         """
-        frame_series = self.__frame_series if frame_series is None else frame_series
-        frame_length = self.__frame_length if frame_length is None else frame_length
-        frame_shift = self.__frame_shift if frame_shift is None else frame_shift
-        fft_point = self.__fft_point if fft_point is None else fft_point
-        fs = self.__fs if fs is None else fs
-        dB = self.__dB if dB is None else dB
-        power = self.__power if power is None else power
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_length = self.frame_length if frame_length is None else frame_length
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
+        fft_point = self.fft_point if fft_point is None else fft_point
+        fs = self.fs if fs is None else fs
+        dB = self.dB if dB is None else dB
+        power = self.power if power is None else power
 
         return FreqDomainFrameSeries(
             frame_series, frame_length, frame_shift, fft_point, fs, dB=dB, power=power
         )
+
+    def dump(self) -> "FreqDomainFrameSeries":
+        return super().dump()
 
     def __add__(self, other: Any) -> "FreqDomainFrameSeries":
         return super().__add__(other)

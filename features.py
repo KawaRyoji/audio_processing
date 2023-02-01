@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import librosa
 import numpy as np
@@ -83,7 +83,7 @@ class Waveform(TimeDomainFrameSeries):
             fft_point = self.shape[1]
 
         to_spectrum = lambda frame: np.fft.fft(frame, n=fft_point)
-        spectrum = to_spectrum(self.data * window_func)
+        spectrum = to_spectrum(self.frame_series * window_func)
 
         return Spectrum(
             spectrum,
@@ -92,6 +92,72 @@ class Waveform(TimeDomainFrameSeries):
             fft_point,
             self.fs,
         )
+
+    # 以下継承したメソッド
+
+    def apply(
+        self, func: Callable[[np.ndarray], np.ndarray], axis: int = 1
+    ) -> "Waveform":
+        return super().apply(func, axis)
+
+    def copy_with(
+        self,
+        frame_series: Optional[np.ndarray] = None,
+        frame_length: Optional[int] = None,
+        frame_shift: Optional[int] = None,
+        fs: Optional[int] = None,
+    ) -> "Waveform":
+        """
+        引数の値を使って自身のインスタンスをコピーします.
+
+        Args:
+            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
+            frame_length (Optional[int], optional): フレーム長
+            frame_shift (Optional[int], optional): フレームシフト
+            fs (Optional[int], optional): サンプリング周波数
+
+        Returns:
+            Waveform: コピーしたインスタンス
+        """
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_length = self.frame_length if frame_length is None else frame_length
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
+        fs = self.fs if fs is None else fs
+
+        return Waveform(frame_series, frame_length, frame_shift, fs)
+
+    def save(
+        self, path: str, compress: bool = False, overwrite: bool = False
+    ) -> "Waveform":
+        return super().save(path, compress=compress, overwrite=overwrite)
+
+    @classmethod
+    def from_npz(cls, path: str) -> "Waveform":
+        return super().from_npz(path)
+
+    def plot(
+        self, show=True, save_fig_path: Optional[str] = None, color_map: str = "magma"
+    ) -> "Waveform":
+        return super().plot(
+            show=show,
+            save_fig_path=save_fig_path,
+            color_map=color_map,
+        )
+
+    def dump(self) -> "Waveform":
+        return super().dump()
+
+    def __add__(self, other: Any) -> "Waveform":
+        return super().__add__(other)
+
+    def __sub__(self, other: Any) -> "Waveform":
+        return super().__sub__(other)
+
+    def __mul__(self, other: Any) -> "Waveform":
+        return super().__mul__(other)
+
+    def __truediv__(self, other: Any) -> "Waveform":
+        return super().__truediv__(other)
 
 
 class Spectrum(FreqDomainFrameSeries):
@@ -145,7 +211,7 @@ class Spectrum(FreqDomainFrameSeries):
             AmplitudeSpectrum: 振幅スペクトル
         """
         return AmplitudeSpectrum(
-            np.abs(self.data),
+            np.abs(self.frame_series),
             self.frame_length,
             self.frame_shift,
             self.fft_point,
@@ -154,31 +220,27 @@ class Spectrum(FreqDomainFrameSeries):
             power=False,
         )
 
-    def to_phase(self, rad=True) -> "PhaseSpectrum":
+    def to_phase(self) -> "PhaseSpectrum":
         """
         スペクトルを位相スペクトルに変換します.
-
-        Args:
-            rad (bool, optional): 位相をradで扱うかどうか
 
         Returns:
             PhaseSpectrum: 位相スペクトル
         """
         return PhaseSpectrum(
-            np.angle(self.data, deg=not rad),
+            np.angle(self.frame_series),
             self.frame_length,
             self.frame_shift,
         )
 
     def to_waveform(self) -> "Waveform":
         return Waveform(
-            np.real(np.fft.ifft(self.data)),
+            np.real(np.fft.ifft(self.frame_series)),
             self.frame_length,
             self.frame_shift,
             self.fs,
         )
 
-    # TODO: 振幅スペクトルと位相スペクトルからスペクトルを作成する
     @classmethod
     def restore(
         cls, amplitude: "AmplitudeSpectrum", phase: "PhaseSpectrum"
@@ -215,6 +277,88 @@ class Spectrum(FreqDomainFrameSeries):
             amplitude.fs,
         )
 
+    # 以下継承したメソッド
+
+    def apply(
+        self, func: Callable[[np.ndarray], np.ndarray], axis: int = 1
+    ) -> "Spectrum":
+        return super().apply(func, axis)
+
+    def copy_with(
+        self,
+        frame_series: Optional[np.ndarray] = None,
+        frame_length: Optional[int] = None,
+        frame_shift: Optional[int] = None,
+        fft_point: Optional[int] = None,
+        fs: Optional[int] = None,
+        dB: Optional[bool] = None,
+        power: Optional[bool] = None,
+    ) -> "Spectrum":
+        """
+        引数の値を使って自身のインスタンスをコピーします.
+
+        Args:
+            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
+            frame_length (Optional[int], optional): フレーム長
+            frame_shift (Optional[int], optional): フレームシフト
+            fft_point (Optional[int], optional): FFTポイント数
+            fs (Optional[int], optional): サンプリング周波数
+            dB (Optional[bool], optional): dB値であるか
+            power (Optional[bool], optional): パワー値であるか
+
+        Returns:
+            Spectrum: コピーしたインスタンス
+        """
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_length = self.frame_length if frame_length is None else frame_length
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
+        fft_point = self.fft_point if fft_point is None else fft_point
+        fs = self.fs if fs is None else fs
+        dB = self.dB if dB is None else dB
+        power = self.power if power is None else power
+
+        return Spectrum(
+            frame_series, frame_length, frame_shift, fft_point, fs, dB=dB, power=power
+        )
+
+    def save(
+        self, path: str, compress: bool = False, overwrite: bool = False
+    ) -> "Spectrum":
+        return super().save(path, compress=compress, overwrite=overwrite)
+
+    @classmethod
+    def from_npz(cls, path: str) -> "Spectrum":
+        return super().from_npz(path)
+
+    def plot(
+        self,
+        up_to_nyquist=True,
+        show=True,
+        save_fig_path: Optional[str] = None,
+        color_map: str = "magma",
+    ) -> "Spectrum":
+        return super().plot(
+            up_to_nyquist=up_to_nyquist,
+            show=show,
+            save_fig_path=save_fig_path,
+            color_map=color_map,
+        )
+
+    def dump(self) -> "Spectrum":
+        return super().dump()
+
+    def __add__(self, other: Any) -> "Spectrum":
+        return super().__add__(other)
+
+    def __sub__(self, other: Any) -> "Spectrum":
+        return super().__sub__(other)
+
+    def __mul__(self, other: Any) -> "Spectrum":
+        return super().__mul__(other)
+
+    def __truediv__(self, other: Any) -> "Spectrum":
+        return super().__truediv__(other)
+
 
 class AmplitudeSpectrum(FreqDomainFrameSeries):
     """
@@ -238,7 +382,9 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
             np.real(
                 np.fft.ifft(
                     np.log(
-                        self.data, out=np.zeros_like(self.data), where=self.data != 0
+                        self.frame_series,
+                        out=np.zeros_like(self.frame_series),
+                        where=self.frame_series != 0,
                     )
                 )
             ),
@@ -258,7 +404,7 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
             MelSpectrum: メルスペクトル
         """
         filter = librosa.filters.mel(sr=self.fs, n_fft=self.fft_point, n_mels=bins)
-        melspectrum = np.dot(filter, self.data[:, : self.shape[1] // 2 + 1].T).T
+        melspectrum = np.dot(filter, self.frame_series[:, : self.shape[1] // 2 + 1].T).T
         return MelSpectrum(
             FreqDomainFrameSeries.to_symmetry(melspectrum),
             self.frame_length,
@@ -269,13 +415,171 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
             power=self.power,
         )
 
+    # 以下継承したメソッド
+
+    def linear_to_dB(self) -> "AmplitudeSpectrum":
+        return super().linear_to_dB()
+
+    def dB_to_linear(self) -> "AmplitudeSpectrum":
+        return super().dB_to_linear()
+
+    def linear_to_power(self) -> "AmplitudeSpectrum":
+        return super().linear_to_power()
+
+    def power_to_linear(self) -> "AmplitudeSpectrum":
+        return super().power_to_linear()
+
+    def apply(
+        self, func: Callable[[np.ndarray], np.ndarray], axis: int = 1
+    ) -> "AmplitudeSpectrum":
+        return super().apply(func, axis)
+
+    def copy_with(
+        self,
+        frame_series: Optional[np.ndarray] = None,
+        frame_length: Optional[int] = None,
+        frame_shift: Optional[int] = None,
+        fft_point: Optional[int] = None,
+        fs: Optional[int] = None,
+        dB: Optional[bool] = None,
+        power: Optional[bool] = None,
+    ) -> "AmplitudeSpectrum":
+        """
+        引数の値を使って自身のインスタンスをコピーします.
+
+        Args:
+            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
+            frame_length (Optional[int], optional): フレーム長
+            frame_shift (Optional[int], optional): フレームシフト
+            fft_point (Optional[int], optional): FFTポイント数
+            fs (Optional[int], optional): サンプリング周波数
+            dB (Optional[bool], optional): dB値であるか
+            power (Optional[bool], optional): パワー値であるか
+
+        Returns:
+            AmplitudeSpectrum: コピーしたインスタンス
+        """
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_length = self.frame_length if frame_length is None else frame_length
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
+        fft_point = self.fft_point if fft_point is None else fft_point
+        fs = self.fs if fs is None else fs
+        dB = self.dB if dB is None else dB
+        power = self.power if power is None else power
+
+        return AmplitudeSpectrum(
+            frame_series, frame_length, frame_shift, fft_point, fs, dB=dB, power=power
+        )
+
+    def save(
+        self, path: str, compress: bool = False, overwrite: bool = False
+    ) -> "AmplitudeSpectrum":
+        return super().save(path, compress=compress, overwrite=overwrite)
+
+    @classmethod
+    def from_npz(cls, path: str) -> "AmplitudeSpectrum":
+        return super().from_npz(path)
+
+    def plot(
+        self,
+        up_to_nyquist: bool = True,
+        show: bool = True,
+        save_fig_path: Optional[str] = None,
+        color_map: str = "magma",
+    ) -> "AmplitudeSpectrum":
+        return super().plot(
+            up_to_nyquist=up_to_nyquist,
+            show=show,
+            save_fig_path=save_fig_path,
+            color_map=color_map,
+        )
+
+    def dump(self) -> "AmplitudeSpectrum":
+        return super().dump()
+
+    def __add__(self, other: Any) -> "AmplitudeSpectrum":
+        return super().__add__(other)
+
+    def __sub__(self, other: Any) -> "AmplitudeSpectrum":
+        return super().__sub__(other)
+
+    def __mul__(self, other: Any) -> "AmplitudeSpectrum":
+        return super().__mul__(other)
+
+    def __truediv__(self, other: Any) -> "AmplitudeSpectrum":
+        return super().__truediv__(other)
+
 
 class PhaseSpectrum(FrameSeries):
     """
     位相スペクトルのフレームの系列を扱うクラスです.
     """
 
-    pass
+    # 以下継承したメソッド
+
+    def apply(
+        self, func: Callable[[np.ndarray], np.ndarray], axis: int = 1
+    ) -> "PhaseSpectrum":
+        return super().apply(func, axis)
+
+    def copy_with(
+        self,
+        frame_series: Optional[np.ndarray] = None,
+        frame_length: Optional[int] = None,
+        frame_shift: Optional[int] = None,
+    ) -> "PhaseSpectrum":
+        """
+        引数の値を使って自身のインスタンスをコピーします.
+
+        Args:
+            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
+            frame_length (Optional[int], optional): フレーム長
+            frame_shift (Optional[int], optional): フレームシフト
+
+        Returns:
+            PhaseSpectrum: コピーしたインスタンス
+        """
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_length = self.frame_length if frame_length is None else frame_length
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
+
+        return PhaseSpectrum(frame_series, frame_length, frame_shift)
+
+    def save(
+        self, path: str, compress: bool = False, overwrite: bool = False
+    ) -> "PhaseSpectrum":
+        return super().save(path, compress=compress, overwrite=overwrite)
+
+    @classmethod
+    def from_npz(cls, path: str) -> "PhaseSpectrum":
+        return super().from_npz(path)
+
+    def plot(
+        self,
+        show: bool = True,
+        save_fig_path: Optional[str] = None,
+        color_map: str = "magma",
+    ) -> "PhaseSpectrum":
+        return super().plot(
+            show=show,
+            save_fig_path=save_fig_path,
+            color_map=color_map,
+        )
+
+    def dump(self) -> "PhaseSpectrum":
+        return super().dump()
+
+    def __add__(self, other: Any) -> "PhaseSpectrum":
+        return super().__add__(other)
+
+    def __sub__(self, other: Any) -> "PhaseSpectrum":
+        return super().__sub__(other)
+
+    def __mul__(self, other: Any) -> "PhaseSpectrum":
+        return super().__mul__(other)
+
+    def __truediv__(self, other: Any) -> "PhaseSpectrum":
+        return super().__truediv__(other)
 
 
 class MelSpectrum(FreqDomainFrameSeries):
@@ -300,7 +604,9 @@ class MelSpectrum(FreqDomainFrameSeries):
             np.real(
                 np.fft.ifft(
                     np.log(
-                        self.data, out=np.zeros_like(self.data), where=self.data != 0
+                        self.frame_series,
+                        out=np.zeros_like(self.frame_series),
+                        where=self.frame_series != 0,
                     )
                 )
             ),
@@ -308,6 +614,100 @@ class MelSpectrum(FreqDomainFrameSeries):
             self.frame_shift,
             self.fs,
         )
+
+    # 以下継承したメソッド
+
+    def linear_to_dB(self) -> "MelSpectrum":
+        return super().linear_to_dB()
+
+    def dB_to_linear(self) -> "MelSpectrum":
+        return super().dB_to_linear()
+
+    def linear_to_power(self) -> "MelSpectrum":
+        return super().linear_to_power()
+
+    def power_to_linear(self) -> "MelSpectrum":
+        return super().power_to_linear()
+
+    def apply(
+        self, func: Callable[[np.ndarray], np.ndarray], axis: int = 1
+    ) -> "MelSpectrum":
+        return super().apply(func, axis)
+
+    def copy_with(
+        self,
+        frame_series: Optional[np.ndarray] = None,
+        frame_length: Optional[int] = None,
+        frame_shift: Optional[int] = None,
+        fft_point: Optional[int] = None,
+        fs: Optional[int] = None,
+        dB: Optional[bool] = None,
+        power: Optional[bool] = None,
+    ) -> "MelSpectrum":
+        """
+        引数の値を使って自身のインスタンスをコピーします.
+
+        Args:
+            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
+            frame_length (Optional[int], optional): フレーム長
+            frame_shift (Optional[int], optional): フレームシフト
+            fft_point (Optional[int], optional): FFTポイント数
+            fs (Optional[int], optional): サンプリング周波数
+            dB (Optional[bool], optional): dB値であるか
+            power (Optional[bool], optional): パワー値であるか
+
+        Returns:
+            MelSpectrum: コピーしたインスタンス
+        """
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_length = self.frame_length if frame_length is None else frame_length
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
+        fft_point = self.fft_point if fft_point is None else fft_point
+        fs = self.fs if fs is None else fs
+        dB = self.dB if dB is None else dB
+        power = self.power if power is None else power
+
+        return MelSpectrum(
+            frame_series, frame_length, frame_shift, fft_point, fs, dB=dB, power=power
+        )
+
+    def save(
+        self, path: str, compress: bool = False, overwrite: bool = False
+    ) -> "MelSpectrum":
+        return super().save(path, compress=compress, overwrite=overwrite)
+
+    @classmethod
+    def from_npz(cls, path: str) -> "MelSpectrum":
+        return super().from_npz(path)
+
+    def plot(
+        self,
+        up_to_nyquist: bool = True,
+        show: bool = True,
+        save_fig_path: Optional[str] = None,
+        color_map: str = "magma",
+    ) -> "MelSpectrum":
+        return super().plot(
+            up_to_nyquist=up_to_nyquist,
+            show=show,
+            save_fig_path=save_fig_path,
+            color_map=color_map,
+        )
+
+    def dump(self) -> "MelSpectrum":
+        return super().dump()
+
+    def __add__(self, other: Any) -> "MelSpectrum":
+        return super().__add__(other)
+
+    def __sub__(self, other: Any) -> "MelSpectrum":
+        return super().__sub__(other)
+
+    def __mul__(self, other: Any) -> "MelSpectrum":
+        return super().__mul__(other)
+
+    def __truediv__(self, other: Any) -> "MelSpectrum":
+        return super().__truediv__(other)
 
 
 class Cepstrum(TimeDomainFrameSeries):
@@ -326,10 +726,10 @@ class Cepstrum(TimeDomainFrameSeries):
             AmplitudeSpectrum: 振幅スペクトル
         """
         if fft_point is None:
-            fft_point = self.data.shape[1]
+            fft_point = self.frame_series.shape[1]
 
         return AmplitudeSpectrum(
-            np.exp(np.real(np.fft.fft(self.data, n=fft_point))),
+            np.exp(np.real(np.fft.fft(self.frame_series, n=fft_point))),
             self.frame_length,
             self.frame_shift,
             fft_point,
@@ -352,14 +752,15 @@ class Cepstrum(TimeDomainFrameSeries):
         if high_quefrency:
             pad = np.zeros(
                 (self.shape[0], self.shape[1] - 2 * order),
-                dtype=self.data.dtype,
+                dtype=self.frame_series.dtype,
             )
             liftered = np.concatenate(
-                (self.data[:, :order], pad, self.data[:, -order:]), axis=1
+                (self.frame_series[:, :order], pad, self.frame_series[:, -order:]),
+                axis=1,
             )
         else:
             liftered = np.pad(
-                self.data[:, order:-order],
+                self.frame_series[:, order:-order],
                 ((0, 0), (order, order)),
                 "constant",
                 constant_values=0,
@@ -384,7 +785,9 @@ class Cepstrum(TimeDomainFrameSeries):
         Returns:
             MelCepstrum: メルケプストラム
         """
-        melcepstrum = self._freqt(self.data, self.shape[1] // 2 + 1, bins, alpha)
+        melcepstrum = self._freqt(
+            self.frame_series, self.shape[1] // 2 + 1, bins, alpha
+        )
 
         # NOTE: 処理時間がかなりかかる
         return MelCepstrum(
@@ -423,6 +826,75 @@ class Cepstrum(TimeDomainFrameSeries):
 
         return h
 
+    # 以下継承したメソッド
+
+    def apply(
+        self, func: Callable[[np.ndarray], np.ndarray], axis: int = 1
+    ) -> "Cepstrum":
+        return super().apply(func, axis)
+
+    def copy_with(
+        self,
+        frame_series: Optional[np.ndarray] = None,
+        frame_length: Optional[int] = None,
+        frame_shift: Optional[int] = None,
+        fs: Optional[int] = None,
+    ) -> "Cepstrum":
+        """
+        引数の値を使って自身のインスタンスをコピーします.
+
+        Args:
+            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
+            frame_length (Optional[int], optional): フレーム長
+            frame_shift (Optional[int], optional): フレームシフト
+            fs (Optional[int], optional): サンプリング周波数
+
+        Returns:
+            Cepstrum: コピーしたインスタンス
+        """
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_length = self.frame_length if frame_length is None else frame_length
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
+        fs = self.fs if fs is None else fs
+
+        return Cepstrum(frame_series, frame_length, frame_shift, fs)
+
+    def save(
+        self, path: str, compress: bool = False, overwrite: bool = False
+    ) -> "Cepstrum":
+        return super().save(path, compress=compress, overwrite=overwrite)
+
+    @classmethod
+    def from_npz(cls, path: str) -> "Cepstrum":
+        return super().from_npz(path)
+
+    def plot(
+        self,
+        show: bool = True,
+        save_fig_path: Optional[str] = None,
+        color_map: str = "magma",
+    ) -> "Cepstrum":
+        return super().plot(
+            show=show,
+            save_fig_path=save_fig_path,
+            color_map=color_map,
+        )
+
+    def dump(self) -> "Cepstrum":
+        return super().dump()
+
+    def __add__(self, other: Any) -> "Cepstrum":
+        return super().__add__(other)
+
+    def __sub__(self, other: Any) -> "Cepstrum":
+        return super().__sub__(other)
+
+    def __mul__(self, other: Any) -> "Cepstrum":
+        return super().__mul__(other)
+
+    def __truediv__(self, other: Any) -> "Cepstrum":
+        return super().__truediv__(other)
+
 
 class MelCepstrum(TimeDomainFrameSeries):
     """
@@ -443,7 +915,7 @@ class MelCepstrum(TimeDomainFrameSeries):
             fft_point = self.shape[1]
 
         to_spectrum = lambda frame: np.fft.fft(frame, n=fft_point)
-        spectrum = np.exp(np.real(to_spectrum(self.data)))
+        spectrum = np.exp(np.real(to_spectrum(self.frame_series)))
 
         return MelSpectrum(
             spectrum,
@@ -466,7 +938,7 @@ class MelCepstrum(TimeDomainFrameSeries):
             Cepstrum: ケプストラム
         """
         cepstrum = Cepstrum._freqt(
-            self.data, self.shape[1] // 2 + 1, self.shape[1] // 2 + 1, -alpha
+            self.frame_series, self.shape[1] // 2 + 1, self.shape[1] // 2 + 1, -alpha
         )
 
         return Cepstrum(
@@ -475,3 +947,69 @@ class MelCepstrum(TimeDomainFrameSeries):
             self.frame_shift,
             self.fs,
         )
+
+    # 以下継承したメソッド
+
+    def apply(
+        self, func: Callable[[np.ndarray], np.ndarray], axis: int = 1
+    ) -> "MelCepstrum":
+        return super().apply(func, axis)
+
+    def copy_with(
+        self,
+        frame_series: Optional[np.ndarray] = None,
+        frame_length: Optional[int] = None,
+        frame_shift: Optional[int] = None,
+        fs: Optional[int] = None,
+    ) -> "MelCepstrum":
+        """
+        引数の値を使って自身のインスタンスをコピーします.
+
+        Args:
+            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
+            frame_length (Optional[int], optional): フレーム長
+            frame_shift (Optional[int], optional): フレームシフト
+            fs (Optional[int], optional): サンプリング周波数
+
+        Returns:
+            MelCepstrum: コピーしたインスタンス
+        """
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_length = self.frame_length if frame_length is None else frame_length
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
+        fs = self.fs if fs is None else fs
+
+        return MelCepstrum(frame_series, frame_length, frame_shift, fs)
+
+    def save(
+        self, path: str, compress: bool = False, overwrite: bool = False
+    ) -> "MelCepstrum":
+        return super().save(path, compress=compress, overwrite=overwrite)
+
+    @classmethod
+    def from_npz(cls, path: str) -> "MelCepstrum":
+        return super().from_npz(path)
+
+    def plot(
+        self, show=True, save_fig_path: Optional[str] = None, color_map: str = "magma"
+    ) -> "MelCepstrum":
+        return super().plot(
+            show=show,
+            save_fig_path=save_fig_path,
+            color_map=color_map,
+        )
+
+    def dump(self) -> "MelCepstrum":
+        return super().dump()
+
+    def __add__(self, other: Any) -> "MelCepstrum":
+        return super().__add__(other)
+
+    def __sub__(self, other: Any) -> "MelCepstrum":
+        return super().__sub__(other)
+
+    def __mul__(self, other: Any) -> "MelCepstrum":
+        return super().__mul__(other)
+
+    def __truediv__(self, other: Any) -> "MelCepstrum":
+        return super().__truediv__(other)

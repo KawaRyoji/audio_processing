@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from typing import Optional
 
 import librosa
@@ -20,8 +22,22 @@ class WavFile:
         if len(data.shape) != 1:
             raise ValueError("時間波形は1次元配列でなければなりません")
 
-        self.fs = fs
-        self.data = np.array(data, dtype=dtype)
+        self.__fs = fs
+        self.__data = np.array(data, dtype=dtype)
+
+    @property
+    def fs(self) -> int:
+        """
+        サンプリング周波数
+        """
+        return self.__fs
+
+    @property
+    def data(self) -> np.ndarray:
+        """
+        wavファイルのデータ
+        """
+        return self.__data
 
     @classmethod
     def read(
@@ -61,8 +77,30 @@ class WavFile:
 
         return WavFile(resampled, target_fs, dtype=resampled.dtype)
 
-    def save(self, path: str, target_bits: int = 16) -> None:
+    def save(
+        self, path: str, target_bits: int = 16, overwrite: bool = False
+    ) -> "WavFile":
+        """
+        wavファイルに書き込みます.
+        `overwrite`が`False`の場合かつすでにファイルが存在する場合上書きされません.
+
+        Args:
+            path (str): 保存先のパス
+            target_bits (int, optional): 書き込むbit数
+            overwrite (bool, optional): 上書きを許可するかどうか
+
+        Returns:
+            WavFile: 自身のインスタンス
+        """
+        if not overwrite and os.path.exists(path):
+            print(path, "は既に存在します")
+            return self
+
+        Path(path).parent.mkdir(exist_ok=True)
+
         soundfile.write(path, self.data, self.fs, "PCM_{}".format(target_bits))
+
+        return self
 
     def to_frames(
         self,
@@ -95,18 +133,33 @@ class WavFile:
             dtype=dtype,
         )
 
-    def to_npz(self, path: str, compress: bool = False) -> None:
+    def to_npz(
+        self, path: str, compress: bool = False, overwrite: bool = False
+    ) -> "WavFile":
         """
         自身のインスタンスをnpzファイルに保存します.
+        `overwrite`が`False`の場合かつすでにファイルが存在する場合上書きされません.
 
         Args:
             path (str): 保存先のパス
             compress (bool, optional): 圧縮するかどうか
+            overwrite (bool, optional): 上書きを許可するかどうか
+
+        Returns:
+            WavFile: 自身のインスタンス
         """
+        if not overwrite and os.path.exists(path):
+            print(path, "は既に存在します")
+            return self
+
+        Path(path).parent.mkdir(exist_ok=True)
+
         if compress:
-            np.savez_compressed(path, x=self.data, fs=self.fs)
+            np.savez_compressed(path, data=self.data, fs=self.fs)
         else:
-            np.savez(path, x=self.data, fs=self.fs)
+            np.savez(path, data=self.data, fs=self.fs)
+
+        return self
 
     @classmethod
     def from_npz(cls, path: str) -> "WavFile":
@@ -124,3 +177,7 @@ class WavFile:
         fs: int = file["fs"]
 
         return cls(data, fs, dtype=data.dtype)
+
+    
+    def __str__(self) -> str:
+        return "data shape: {}\nsampling frequency: {}".format(self.data.shape, self.fs)
