@@ -1,9 +1,10 @@
 import os
 from pathlib import Path
-from typing import Any, Callable, Optional, Tuple
-from typing_extensions import override
-import numpy as np
+from typing import Any, Callable, Optional, Tuple, overload
+
 import matplotlib.pyplot as plt
+import numpy as np
+from typing_extensions import override
 
 
 class FrameSeries:
@@ -27,7 +28,7 @@ class FrameSeries:
             ValueError:
         """
         if len(frame_series.shape) != 2:
-            raise ValueError("フレーム系列は2次元でなければなりません.")
+            raise ValueError("フレームの系列は2次元でなければなりません.")
 
         self.__frame_series = frame_series
         self.__frame_length = frame_length
@@ -129,15 +130,44 @@ class FrameSeries:
             axis (int, optional): 適用する軸
 
         Returns:
-            FrameSeries: 関数を適用した後のフレーム系列
+            FrameSeries: 関数を適用した後のフレームの系列
         """
         return self.copy_with(
             frame_series=np.apply_along_axis(func, axis=axis, arr=self.frame_series)
         )
 
+    @overload
+    def trim(self, end: int) -> "FrameSeries":
+        """
+        時間軸でフレームの系列を切り取ります.
+        指定した終了インデックスの部分は切り取った後のフレームの系列に含まれません.
+
+        Args:
+            end (int): 終了インデックス
+
+        Returns:
+            FrameSeries: 切り取った後のフレームの系列
+        """
+        return self.trim(0, end)
+
+    @overload
+    def trim(self, start: int, end: int) -> "FrameSeries":
+        """
+        時間軸でフレームの系列を切り取ります.
+        指定した終了インデックスの部分は切り取った後のフレームの系列に含まれません.
+
+        Args:
+            start (int): 開始インデックス
+            end (int): 終了インデックス
+
+        Returns:
+            FrameSeries: 切り取った後のフレームの系列
+        """
+        return self.copy_with(frame_series=self.frame_series[start:end, :])
+
     def properties(self) -> dict[str, Any]:
         """
-        このフレーム系列を生成したプロパティを辞書形式で返します
+        このフレームの系列を生成したプロパティを辞書形式で返します
 
         Returns:
             dict[str, Any]: プロパティの辞書
@@ -151,7 +181,7 @@ class FrameSeries:
         self, path: str, compress: bool = False, overwrite: bool = False
     ) -> "FrameSeries":
         """
-        このフレーム系列とそれを生成したプロパティをnpzファイルに保存します.
+        このフレームの系列とそれを生成したプロパティをnpzファイルに保存します.
         `overwrite`が`False`の場合かつすでにファイルが存在する場合上書きされません.
 
         Args:
@@ -374,6 +404,14 @@ class TimeDomainFrameSeries(FrameSeries):
 
     # 以下継承したメソッド
 
+    @overload
+    def trim(self, end: int) -> "TimeDomainFrameSeries":
+        return super().trim(end)
+
+    @overload
+    def trim(self, start: int, end: int) -> "TimeDomainFrameSeries":
+        return super().trim(start, end)
+
     def plot(
         self,
         show: bool = True,
@@ -485,7 +523,7 @@ class FreqDomainFrameSeries(FrameSeries):
     def dB(self) -> bool:
         """
         この系列がdB値であるかを返します.
-        Trueの場合このフレーム系列はdB値です.
+        Trueの場合このフレームの系列はdB値です.
 
         Returns:
             bool: この系列がdB値であるかどうか.
@@ -496,7 +534,7 @@ class FreqDomainFrameSeries(FrameSeries):
     def power(self) -> bool:
         """
         この系列がパワーであるかを返します.
-        Trueの場合このフレーム系列はパワー値です.
+        Trueの場合このフレームの系列はパワー値です.
 
         Returns:
             bool: この系列がパワーであるかどうか.
@@ -616,6 +654,14 @@ class FreqDomainFrameSeries(FrameSeries):
         return np.concatenate([series, np.fliplr(series)[:, 1:-1]], axis=1)
 
     # 以下継承したメソッド
+
+    @overload
+    def trim(self, end: int) -> "FreqDomainFrameSeries":
+        return super().trim(end)
+
+    @overload
+    def trim(self, start: int, end: int) -> "FreqDomainFrameSeries":
+        return super().trim(start, end)
 
     @override
     def plot(

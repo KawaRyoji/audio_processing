@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Union, overload
 
 import librosa
 import numpy as np
@@ -134,6 +134,14 @@ class Waveform(TimeDomainFrameSeries):
     @classmethod
     def from_npz(cls, path: str) -> "Waveform":
         return super().from_npz(path)
+
+    @overload
+    def trim(self, end: int) -> "Waveform":
+        return super().trim(end)
+
+    @overload
+    def trim(self, start: int, end: int) -> "Waveform":
+        return super().trim(start, end)
 
     def plot(
         self, show=True, save_fig_path: Optional[str] = None, color_map: str = "magma"
@@ -330,6 +338,14 @@ class Spectrum(FreqDomainFrameSeries):
     def from_npz(cls, path: str) -> "Spectrum":
         return super().from_npz(path)
 
+    @overload
+    def trim(self, end: int) -> "Spectrum":
+        return super().trim(end)
+
+    @overload
+    def trim(self, start: int, end: int) -> "Spectrum":
+        return super().trim(start, end)
+
     def plot(
         self,
         up_to_nyquist=True,
@@ -480,6 +496,14 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
     def from_npz(cls, path: str) -> "AmplitudeSpectrum":
         return super().from_npz(path)
 
+    @overload
+    def trim(self, end: int) -> "AmplitudeSpectrum":
+        return super().trim(end)
+
+    @overload
+    def trim(self, start: int, end: int) -> "AmplitudeSpectrum":
+        return super().trim(start, end)
+
     def plot(
         self,
         up_to_nyquist: bool = True,
@@ -553,6 +577,14 @@ class PhaseSpectrum(FrameSeries):
     @classmethod
     def from_npz(cls, path: str) -> "PhaseSpectrum":
         return super().from_npz(path)
+
+    @overload
+    def trim(self, end: int) -> "PhaseSpectrum":
+        return super().trim(end)
+
+    @overload
+    def trim(self, start: int, end: int) -> "PhaseSpectrum":
+        return super().trim(start, end)
 
     def plot(
         self,
@@ -680,6 +712,14 @@ class MelSpectrum(FreqDomainFrameSeries):
     def from_npz(cls, path: str) -> "MelSpectrum":
         return super().from_npz(path)
 
+    @overload
+    def trim(self, end: int) -> "MelSpectrum":
+        return super().trim(end)
+
+    @overload
+    def trim(self, start: int, end: int) -> "MelSpectrum":
+        return super().trim(start, end)
+
     def plot(
         self,
         up_to_nyquist: bool = True,
@@ -725,8 +765,7 @@ class Cepstrum(TimeDomainFrameSeries):
         Returns:
             AmplitudeSpectrum: 振幅スペクトル
         """
-        if fft_point is None:
-            fft_point = self.frame_series.shape[1]
+        fft_point = self.shape[1] if fft_point is None else fft_point
 
         return AmplitudeSpectrum(
             np.exp(np.real(np.fft.fft(self.frame_series, n=fft_point))),
@@ -868,6 +907,14 @@ class Cepstrum(TimeDomainFrameSeries):
     def from_npz(cls, path: str) -> "Cepstrum":
         return super().from_npz(path)
 
+    @overload
+    def trim(self, end: int) -> "Cepstrum":
+        return super().trim(end)
+
+    @overload
+    def trim(self, start: int, end: int) -> "Cepstrum":
+        return super().trim(start, end)
+
     def plot(
         self,
         show: bool = True,
@@ -911,9 +958,7 @@ class MelCepstrum(TimeDomainFrameSeries):
         Returns:
             MelSpectrum: メルスペクトル
         """
-        if fft_point is None:
-            fft_point = self.shape[1]
-
+        fft_point = self.shape[1] if fft_point is None else fft_point
         to_spectrum = lambda frame: np.fft.fft(frame, n=fft_point)
         spectrum = np.exp(np.real(to_spectrum(self.frame_series)))
 
@@ -989,6 +1034,14 @@ class MelCepstrum(TimeDomainFrameSeries):
     @classmethod
     def from_npz(cls, path: str) -> "MelCepstrum":
         return super().from_npz(path)
+
+    @overload
+    def trim(self, end: int) -> "MelCepstrum":
+        return super().trim(end)
+
+    @overload
+    def trim(self, start: int, end: int) -> "MelCepstrum":
+        return super().trim(start, end)
 
     def plot(
         self, show=True, save_fig_path: Optional[str] = None, color_map: str = "magma"
