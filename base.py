@@ -675,6 +675,7 @@ class FreqDomainFrameSeries(FrameSeries):
         フレームの系列を2次元プロットします.
 
         Args:
+            up_to_nyquist (bool, optional)
             show (bool, optional): プロットを表示するかどうか
             save_fig_path (Optional[str], optional): プロットの保存先のパス. `None`の場合保存は行われません
             color_map (str, optional): プロットに使用するカラーマップ

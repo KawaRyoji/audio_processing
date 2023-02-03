@@ -100,6 +100,7 @@ class Waveform(TimeDomainFrameSeries):
     ) -> "Waveform":
         return super().apply(func, axis)
 
+    @override
     def copy_with(
         self,
         frame_series: Optional[np.ndarray] = None,
@@ -292,6 +293,7 @@ class Spectrum(FreqDomainFrameSeries):
     ) -> "Spectrum":
         return super().apply(func, axis)
 
+    @override
     def copy_with(
         self,
         frame_series: Optional[np.ndarray] = None,
@@ -450,6 +452,7 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
     ) -> "AmplitudeSpectrum":
         return super().apply(func, axis)
 
+    @override
     def copy_with(
         self,
         frame_series: Optional[np.ndarray] = None,
@@ -546,6 +549,7 @@ class PhaseSpectrum(FrameSeries):
     ) -> "PhaseSpectrum":
         return super().apply(func, axis)
 
+    @override
     def copy_with(
         self,
         frame_series: Optional[np.ndarray] = None,
@@ -666,6 +670,7 @@ class MelSpectrum(FreqDomainFrameSeries):
     ) -> "MelSpectrum":
         return super().apply(func, axis)
 
+    @override
     def copy_with(
         self,
         frame_series: Optional[np.ndarray] = None,
@@ -872,6 +877,7 @@ class Cepstrum(TimeDomainFrameSeries):
     ) -> "Cepstrum":
         return super().apply(func, axis)
 
+    @override
     def copy_with(
         self,
         frame_series: Optional[np.ndarray] = None,
@@ -1000,6 +1006,7 @@ class MelCepstrum(TimeDomainFrameSeries):
     ) -> "MelCepstrum":
         return super().apply(func, axis)
 
+    @override
     def copy_with(
         self,
         frame_series: Optional[np.ndarray] = None,
