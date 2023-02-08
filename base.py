@@ -12,6 +12,7 @@ from typing_extensions import Self, override
 class FrameSeries:
     """
     フレーム単位の情報を扱うクラスです.
+    継承して新しいプロパティを追加する場合, `copy_with()`と`properties()`を適切にオーバーライドしてください.
     """
 
     def __init__(
@@ -27,7 +28,7 @@ class FrameSeries:
             frame_shift (int): シフト長
 
         Raises:
-            ValueError:
+            ValueError: フレームの系列が2次元でない場合
         """
         if len(frame_series.shape) != 2:
             raise ValueError("フレームの系列は2次元でなければなりません.")
@@ -130,7 +131,7 @@ class FrameSeries:
             axis (int, optional): 適用する軸
 
         Returns:
-            FrameSeries: 関数を適用した後のフレームの系列
+            Self: 関数を適用した後のフレームの系列
         """
         return self.copy_with(
             frame_series=np.apply_along_axis(func, axis=axis, arr=self.frame_series)
@@ -146,7 +147,7 @@ class FrameSeries:
             end (int): 終了インデックス
 
         Returns:
-            FrameSeries: 切り取った後のフレームの系列
+            Self: 切り取った後のフレームの系列
         """
         return self.trim(0, end)
 
@@ -161,9 +162,82 @@ class FrameSeries:
             end (int): 終了インデックス
 
         Returns:
-            FrameSeries: 切り取った後のフレームの系列
+            Self: 切り取った後のフレームの系列
         """
         return self.copy_with(frame_series=self.frame_series[start:end, :])
+
+    def concat(self, *others: Self) -> Self:
+        """
+        時間方向にフレームの系列を結合します.
+        連結できるインスタンスは同じプロパティで生成された者同士でなければなりません.
+
+        Raises:
+            ValueError: 引数に異なるプロパティで生成されたインスタンスがある場合
+
+        Returns:
+            Self: 結合されたインスタンス
+        """
+        if not all(
+            [
+                self.__class__ == other.__class__ and self.same_property(other)
+                for other in others
+            ]
+        ):
+            raise ValueError("結合する全てのインスタンスのプロパティが一致する必要があります")
+
+        return self.copy_with(
+            frame_series=np.concatenate(
+                [self.frame_series] + [f.frame_series for f in others], axis=1
+            )
+        )
+
+    def join(self, *others: Self) -> Self:
+        """
+        自身のインスタンスを他のインスタンスの間にはさんで結合します.
+
+        Example:
+
+        ```python
+        >>> a = FrameSeries(np.zeros(2).reshape((2, 1)), 1, 1)
+        >>> b = FrameSeries(np.zeros(4).reshape((2, 2)) + 1, 1, 1)
+        >>> c = FrameSeries(np.zeros(4).reshape((2, 2)) + 2, 1, 1)
+        >>> d = FrameSeries(np.zeros(4).reshape((2, 2)) + 3, 1, 1)
+        >>> print(a.join(b, c, d).frame_series)
+        [[1. 1. 0. 2. 2. 0. 3. 3.]
+         [1. 1. 0. 2. 2. 0. 3. 3.]]
+        ```
+
+        Raises:
+            ValueError: 引数が1つの場合
+            ValueError: 引数に異なるプロパティで生成されたインスタンスがある場合
+
+        Returns:
+            Self: 結合されたインスタンス
+        """
+        if len(others) < 2:
+            raise ValueError("引数のインスタンスは2つ以上で設定してください")
+
+        if not all(
+            [
+                self.__class__ == other.__class__ and self.same_property(other)
+                for other in others
+            ]
+        ):
+            raise ValueError("結合する全てのインスタンスのプロパティが一致する必要があります")
+
+        return self.copy_with(
+            frame_series=np.concatenate(
+                [others[0].frame_series]
+                + [
+                    np.concatenate(
+                        [self.frame_series, other.frame_series],
+                        axis=1,
+                    )
+                    for other in others[1:]
+                ],
+                axis=1,
+            )
+        )
 
     def properties(self) -> dict[str, Any]:
         """
@@ -188,7 +262,7 @@ class FrameSeries:
             overwrite (bool, optional): 上書きを許可するかどうか
 
         Returns:
-            FrameSeries: 自身のインスタンス
+            Self: 自身のインスタンス
         """
         if not overwrite and os.path.exists(path):
             print(path, "は既に存在します")
@@ -214,28 +288,20 @@ class FrameSeries:
             path (str): npzファイルのパス
 
         Returns:
-            FrameSeries: 読み込んだインスタンス
+            Self: 読み込んだインスタンス
         """
-        file = np.load(path, allow_pickle=True)
+        npz = np.load(path, allow_pickle=True)
+        params = {k: npz[k] for k in npz.files}
+        return cls(**params)
 
-        return cls(file["frame_series"], file["frame_length"], file["frame_shift"])
-
-    def plot(
-        self,
-        show: bool = True,
-        save_fig_path: Optional[str] = None,
-        color_map: str = "magma",
-    ) -> Self:
+    def plot(self, color_map: str = "magma") -> None:
         """
-        フレームの系列を2次元プロットします.
+        フレーム系列をプロットします.
+        このメソッドをオーバーライドすることで`show()`と`save_as_fig()`の出力を任意のプロットに変更できます.
+        オーバーライドしない場合, フレームの系列の1要素を1ドットとするカラーマップが表示されます.
 
         Args:
-            show (bool, optional): プロットを表示するかどうか
-            save_fig_path (Optional[str], optional): プロットの保存先のパス. `None`の場合保存は行われません
-            color_map (str, optional): プロットに使用するカラーマップ
-
-        Returns:
-            FrameSeries: 自身のインスタンス
+            color_map (str, optional): プロットに使用するカラーマップのタイプ
         """
         fig, ax = plt.subplots(
             dpi=100,
@@ -251,14 +317,37 @@ class FrameSeries:
         ax.spines["top"].set_visible(False)
         ax.spines["bottom"].set_visible(False)
 
-        if show:
-            plt.show()
+    def show_fig(
+        self,
+        color_map: str = "magma",
+    ) -> Self:
+        """
+        `plot()`で作成されたプロットを表示します.
 
-        if save_fig_path is not None:
-            plt.savefig(save_fig_path)
+        Args:
+            color_map (str, optional): プロットに使用するカラーマップのタイプ
 
+        Returns:
+            Self: 自身のインスタンス
+        """
+        self.plot(color_map=color_map)
+        plt.show()
+        return self
+
+    def save_as_fig(self, path: str, color_map: str = "magma") -> Self:
+        """
+        `plot()`で作成されたプロットを保存します.
+
+        Args:
+            path (str): 保存先のパス
+            color_map (str, optional): プロットに使用するカラーマップのタイプ
+
+        Returns:
+            Self: 自身のインスタンス
+        """
+        self.plot(color_map=color_map)
+        plt.savefig(path)
         plt.close()
-
         return self
 
     def copy_with(
@@ -276,7 +365,7 @@ class FrameSeries:
             frame_shift (Optional[int], optional): フレームシフト
 
         Returns:
-            FrameSeries: コピーしたインスタンス
+            Self: コピーしたインスタンス
         """
         frame_series = self.frame_series if frame_series is None else frame_series
         frame_length = self.frame_length if frame_length is None else frame_length
@@ -284,80 +373,70 @@ class FrameSeries:
 
         return FrameSeries(frame_series, frame_length, frame_shift)
 
-    def same_property(self, other: Self) -> None:
+    def same_property(self, other: Self) -> bool:
         """
         自身のインスタンスのプロパティともう一方が一致するかを確認します.
 
         Args:
             other (FrameSeries): 一方のインスタンス
 
-        Raises:
-            ValueError: プロパティが一致しない場合
+        Returns:
+            bool: 自身のインスタンスのプロパティともう一方のプロパティが一致するか
         """
-        if self.shape != other.shape:
-            raise ValueError(
-                "データの次元を一致させてください. self:{} other:{}".format(self.shape, other.shape)
-            )
-
-        if self.frame_length != other.frame_length:
-            raise ValueError(
-                "フレーム長を一致させてください. self:{} other:{}".format(
-                    self.frame_length, other.frame_length
-                )
-            )
-
-        if self.frame_shift != other.frame_shift:
-            raise ValueError(
-                "フレームシフトを一致させてください. self:{} other:{}".format(
-                    self.frame_shift, other.frame_shift
-                )
-            )
+        return self.properties() == other.properties()
 
     def dump(self) -> Self:
         """
         自身のインスタンスの内容を出力します.
 
         Returns:
-            FrameSeries: 自身のインスタンス
+            Self: 自身のインスタンス
         """
         print(self.__str__())
         return self
+
+    def check_can_calc(self, other: Any) -> None:
+        """
+        2項演算が行えるかを確認し, できない場合はエラーを出します.
+
+        Args:
+            other (Any): 確認するインスタンス
+
+        Raises:
+            TypeError: 確認するインスタンスのクラスが自身のインスタンスと一致しない場合
+            ValueError: 確認するインスタンスのプロパティが自身のインスタンスと一致しない場合
+        """
+        if not isinstance(other, self.__class__):
+            raise TypeError(
+                "2項演算の引数は同じクラスである必要があります. self:{} other:{}".format(
+                    self.__class__.__name__, other.__class__.__name__
+                )
+            )
+
+        if not self.same_property(other):
+            raise ValueError(
+                "同じプロパティで生成したインスタンス同士でしか演算できません. self:{} other:{}".format(
+                    self.properties(), other.properties()
+                )
+            )
 
     def __len__(self) -> int:
         return self.frame_series.__len__()
 
     def __add__(self, other: Any) -> Self:
-        if not isinstance(other, self.__class__):
-            raise TypeError(
-                "加算は同じクラスである必要があります. other:{}".format(other.__class__.__name__)
-            )
-
-        self.same_property(other)
-
+        self.check_can_calc(other)
         return self.copy_with(frame_series=self.frame_series + other.frame_series)
 
     def __sub__(self, other: Any) -> Self:
-        if not isinstance(other, self.__class__):
-            raise TypeError("減算は同じクラスである必要があります. other:{}".format(other.__class__))
-
-        self.same_property(other)
-
+        self.check_can_calc(other)
         return self.copy_with(frame_series=self.frame_series - other.frame_series)
 
     def __mul__(self, other: Any) -> Self:
-        if not isinstance(other, self.__class__):
-            raise TypeError("乗算は同じクラスである必要があります. other:{}".format(other.__class__))
-
-        self.same_property(other)
-
+        self.check_can_calc(other)
         return self.copy_with(frame_series=self.frame_series * other.frame_series)
 
     def __truediv__(self, other: Any) -> Self:
-        if not isinstance(other, self.__class__):
-            raise TypeError("乗算は同じクラスである必要があります. other:{}".format(other.__class__))
-
-        self.same_property(other)
-
+        self.check_can_calc(other)
         return self.copy_with(frame_series=self.frame_series / other.frame_series)
 
     def __str__(self) -> str:
@@ -373,6 +452,11 @@ class FrameSeries:
 
 
 class TimeDomainFrameSeries(FrameSeries):
+    """
+    時間領域のフレームの系列を扱うクラスです.
+    継承して新しいプロパティを追加する場合, `copy_with()`と`properties()`を適切にオーバーライドしてください.
+    """
+
     def __init__(
         self,
         frame_series: np.ndarray,
@@ -401,16 +485,6 @@ class TimeDomainFrameSeries(FrameSeries):
         return self.__fs
 
     # 以下継承したメソッド
-
-    @override
-    def same_property(self, other: Self) -> None:
-        super().same_property(other)
-
-        if self.fs != other.fs:
-            ValueError(
-                "サンプリング周波数を一致させてください. self:{} other:{}".format(self.fs, other.fs)
-            )
-
     @override
     def copy_with(
         self,
@@ -429,7 +503,7 @@ class TimeDomainFrameSeries(FrameSeries):
             fs (Optional[int], optional): サンプリング周波数
 
         Returns:
-            TimeDomainFrameSeries: コピーしたインスタンス
+            Self: コピーしたインスタンス
         """
         frame_series = self.frame_series if frame_series is None else frame_series
         frame_length = self.frame_length if frame_length is None else frame_length
@@ -444,17 +518,13 @@ class TimeDomainFrameSeries(FrameSeries):
         properties.update({"fs": self.__fs})
         return properties
 
-    @override
-    @classmethod
-    def from_npz(cls, path: str) -> Self:
-        file = np.load(path, allow_pickle=True)
-
-        return cls(
-            file["frame_series"], file["frame_length"], file["frame_shift"], file["fs"]
-        )
-
 
 class FreqDomainFrameSeries(FrameSeries):
+    """
+    周波数領域のフレームの系列を扱うクラスです.
+    継承して新しいプロパティを追加する場合, `copy_with()`と`properties()`を適切にオーバーライドしてください.
+    """
+
     def __init__(
         self,
         frame_series: np.ndarray,
@@ -529,7 +599,7 @@ class FreqDomainFrameSeries(FrameSeries):
         すでにdB値である場合は変換せずそのまま返します.
 
         Returns:
-            FreqDomainFrameSeries: dB値に変換されたフレームの系列
+            Self: dB値に変換されたフレームの系列
         """
         if self.dB:
             print("この特徴量はすでにdB値です.")
@@ -553,7 +623,7 @@ class FreqDomainFrameSeries(FrameSeries):
         元の系列がパワー値だった場合, パワー値として返されます.
 
         Returns:
-            FreqDomainFrameSeries: リニアに変換されたフレームの系列. 元の系列がパワー値だった場合パワーの系列
+            Self: リニアに変換されたフレームの系列. 元の系列がパワー値だった場合パワーの系列
         """
 
         if not self.dB:
@@ -573,7 +643,7 @@ class FreqDomainFrameSeries(FrameSeries):
         すでにパワーである場合またはdB値である場合は変換せずそのまま返します.
 
         Returns:
-            FrameSeries: パワーに変換されたフレームの系列
+            Self: パワーに変換されたフレームの系列
         """
         if self.power:
             print("この特徴量はすでにパワー値です.")
@@ -590,7 +660,7 @@ class FreqDomainFrameSeries(FrameSeries):
         すでにリニアである場合またはdB値の場合は変換せずそのまま返します.
 
         Returns:
-            FrameSeries: リニアに変換されたフレームの系列
+            Self: リニアに変換されたフレームの系列
         """
 
         if not self.power:
@@ -621,21 +691,14 @@ class FreqDomainFrameSeries(FrameSeries):
     def plot(
         self,
         up_to_nyquist: bool = True,
-        show: bool = True,
-        save_fig_path: Optional[str] = None,
         color_map: str = "magma",
     ) -> Self:
         """
-        フレームの系列を2次元プロットします.
+        周波数領域のフレームの系列を2次元プロットします.
 
         Args:
-            up_to_nyquist (bool, optional)
-            show (bool, optional): プロットを表示するかどうか
-            save_fig_path (Optional[str], optional): プロットの保存先のパス. `None`の場合保存は行われません
+            up_to_nyquist (bool, optional): ナイキスト周波数までのプロットにするか
             color_map (str, optional): プロットに使用するカラーマップ
-
-        Returns:
-            FrameSeries: 自身のインスタンス
         """
         fig, ax = plt.subplots(
             dpi=100,
@@ -656,14 +719,39 @@ class FreqDomainFrameSeries(FrameSeries):
         ax.spines["top"].set_visible(False)
         ax.spines["bottom"].set_visible(False)
 
-        if show:
-            plt.show()
+    @override
+    def show_fig(self, up_to_nyquist: bool = True, color_map: str = "magma") -> Self:
+        """
+        `plot()`で作成されたプロットを表示します.
 
-        if save_fig_path is not None:
-            plt.savefig(save_fig_path)
+        Args:
+            up_to_nyquist (bool, optional): ナイキスト周波数までのプロットにするか
+            color_map (str, optional): プロットに使用するカラーマップのタイプ
 
+        Returns:
+            Self: 自身のインスタンス
+        """
+        self.plot(up_to_nyquist=up_to_nyquist, color_map=color_map)
+        plt.show()
+        return self
+
+    @override
+    def save_as_fig(
+        self, path: str, up_to_nyquist: bool = True, color_map: str = "magma"
+    ) -> Self:
+        """
+        `plot()`で作成されたプロットを保存します.
+
+        Args:
+            up_to_nyquist (bool, optional): ナイキスト周波数までのプロットにするか
+            color_map (str, optional): プロットに使用するカラーマップのタイプ
+
+        Returns:
+            Self: 自身のインスタンス
+        """
+        self.plot(up_to_nyquist=up_to_nyquist, color_map=color_map)
+        plt.savefig(path)
         plt.close()
-
         return self
 
     @override
@@ -678,44 +766,6 @@ class FreqDomainFrameSeries(FrameSeries):
             }
         )
         return properties
-
-    @override
-    @classmethod
-    def from_npz(cls, path: str) -> Self:
-        file = np.load(path, allow_pickle=True)
-        return cls(
-            file["frame_series"],
-            file["frame_length"],
-            file["frame_shift"],
-            file["fft_point"],
-            file["fs"],
-            dB=file["dB"],
-            power=file["power"],
-        )
-
-    @override
-    def same_property(self, other: Self) -> None:
-        super().same_property(other)
-
-        if self.fs != other.fs:
-            ValueError(
-                "サンプリング周波数を一致させてください. self:{} other:{}".format(self.fs, other.fs)
-            )
-
-        if self.fft_point != other.fft_point:
-            ValueError(
-                "FFTポイント数を一致させてください. self:{} other:{}".format(
-                    self.fft_point, other.fft_point
-                )
-            )
-
-        if self.dB != other.dB:
-            ValueError("dB値であるか一致させてください. self:{} other:{}".format(self.dB, other.dB))
-
-        if self.power != other.power:
-            ValueError(
-                "パワー値であるか一致させてください. self:{} other:{}".format(self.power, other.power)
-            )
 
     @override
     def copy_with(
@@ -741,7 +791,7 @@ class FreqDomainFrameSeries(FrameSeries):
             power (Optional[bool], optional): パワー値であるか
 
         Returns:
-            FreqDomainFrameSeries: コピーしたインスタンス
+            Self: コピーしたインスタンス
         """
         frame_series = self.frame_series if frame_series is None else frame_series
         frame_length = self.frame_length if frame_length is None else frame_length

@@ -199,6 +199,12 @@ class Spectrum(FreqDomainFrameSeries):
         )
 
     def to_waveform(self) -> Waveform:
+        """
+        スペクトルを時間波形に変換します.
+
+        Returns:
+            Waveform: 変換した時間波形
+        """
         return Waveform(
             np.real(np.fft.ifft(self.frame_series)),
             self.frame_length,
@@ -207,7 +213,22 @@ class Spectrum(FreqDomainFrameSeries):
         )
 
     @classmethod
-    def restore(cls, amplitude: AmplitudeSpectrum, phase: PhaseSpectrum) -> Self:
+    def restore(cls, amplitude: AmplitudeSpectrum, phase: PhaseSpectrum) -> Spectrum:
+        """
+        振幅スペクトルと位相スペクトルからスペクトルを復元します.
+
+        Args:
+            amplitude (AmplitudeSpectrum): 振幅スペクトル
+            phase (PhaseSpectrum): 位相スペクトル
+
+        Raises:
+            ValueError: 振幅スペクトルがdB値またはパワー値となっている場合
+            ValueError: 振幅スペクトルと位相スペクトルの次元が異なっている場合
+            ValueError: 振幅スペクトルと位相スペクトルを生成したプロパティが異なっている場合
+
+        Returns:
+            Spectrum: 復元したスペクトル
+        """
         if amplitude.dB or amplitude.power:
             raise ValueError("振幅スペクトルを線形値にしてください.")
 
@@ -333,77 +354,13 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
             power=self.power,
         )
 
-    # 以下継承したメソッド
-
-    @override
-    def copy_with(
-        self,
-        frame_series: Optional[np.ndarray] = None,
-        frame_length: Optional[int] = None,
-        frame_shift: Optional[int] = None,
-        fft_point: Optional[int] = None,
-        fs: Optional[int] = None,
-        dB: Optional[bool] = None,
-        power: Optional[bool] = None,
-    ) -> Self:
-        """
-        引数の値を使って自身のインスタンスをコピーします.
-
-        Args:
-            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
-            frame_length (Optional[int], optional): フレーム長
-            frame_shift (Optional[int], optional): フレームシフト
-            fft_point (Optional[int], optional): FFTポイント数
-            fs (Optional[int], optional): サンプリング周波数
-            dB (Optional[bool], optional): dB値であるか
-            power (Optional[bool], optional): パワー値であるか
-
-        Returns:
-            AmplitudeSpectrum: コピーしたインスタンス
-        """
-        frame_series = self.frame_series if frame_series is None else frame_series
-        frame_length = self.frame_length if frame_length is None else frame_length
-        frame_shift = self.frame_shift if frame_shift is None else frame_shift
-        fft_point = self.fft_point if fft_point is None else fft_point
-        fs = self.fs if fs is None else fs
-        dB = self.dB if dB is None else dB
-        power = self.power if power is None else power
-
-        return AmplitudeSpectrum(
-            frame_series, frame_length, frame_shift, fft_point, fs, dB=dB, power=power
-        )
-
 
 class PhaseSpectrum(FrameSeries):
     """
     位相スペクトルのフレームの系列を扱うクラスです.
     """
 
-    # 以下継承したメソッド
-
-    @override
-    def copy_with(
-        self,
-        frame_series: Optional[np.ndarray] = None,
-        frame_length: Optional[int] = None,
-        frame_shift: Optional[int] = None,
-    ) -> Self:
-        """
-        引数の値を使って自身のインスタンスをコピーします.
-
-        Args:
-            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
-            frame_length (Optional[int], optional): フレーム長
-            frame_shift (Optional[int], optional): フレームシフト
-
-        Returns:
-            PhaseSpectrum: コピーしたインスタンス
-        """
-        frame_series = self.frame_series if frame_series is None else frame_series
-        frame_length = self.frame_length if frame_length is None else frame_length
-        frame_shift = self.frame_shift if frame_shift is None else frame_shift
-
-        return PhaseSpectrum(frame_series, frame_length, frame_shift)
+    ...
 
 
 class MelSpectrum(FreqDomainFrameSeries):
@@ -437,46 +394,6 @@ class MelSpectrum(FreqDomainFrameSeries):
             self.frame_length,
             self.frame_shift,
             self.fs,
-        )
-
-    # 以下継承したメソッド
-
-    @override
-    def copy_with(
-        self,
-        frame_series: Optional[np.ndarray] = None,
-        frame_length: Optional[int] = None,
-        frame_shift: Optional[int] = None,
-        fft_point: Optional[int] = None,
-        fs: Optional[int] = None,
-        dB: Optional[bool] = None,
-        power: Optional[bool] = None,
-    ) -> Self:
-        """
-        引数の値を使って自身のインスタンスをコピーします.
-
-        Args:
-            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
-            frame_length (Optional[int], optional): フレーム長
-            frame_shift (Optional[int], optional): フレームシフト
-            fft_point (Optional[int], optional): FFTポイント数
-            fs (Optional[int], optional): サンプリング周波数
-            dB (Optional[bool], optional): dB値であるか
-            power (Optional[bool], optional): パワー値であるか
-
-        Returns:
-            MelSpectrum: コピーしたインスタンス
-        """
-        frame_series = self.frame_series if frame_series is None else frame_series
-        frame_length = self.frame_length if frame_length is None else frame_length
-        frame_shift = self.frame_shift if frame_shift is None else frame_shift
-        fft_point = self.fft_point if fft_point is None else fft_point
-        fs = self.fs if fs is None else fs
-        dB = self.dB if dB is None else dB
-        power = self.power if power is None else power
-
-        return MelSpectrum(
-            frame_series, frame_length, frame_shift, fft_point, fs, dB=dB, power=power
         )
 
 
@@ -554,6 +471,7 @@ class Cepstrum(TimeDomainFrameSeries):
         Returns:
             MelCepstrum: メルケプストラム
         """
+        assert alpha > 0
         mel_cepstrum = self._freqt(
             self.frame_series, self.shape[1] // 2 + 1, bins, alpha
         )
@@ -595,35 +513,6 @@ class Cepstrum(TimeDomainFrameSeries):
 
         return h
 
-    # 以下継承したメソッド
-
-    @override
-    def copy_with(
-        self,
-        frame_series: Optional[np.ndarray] = None,
-        frame_length: Optional[int] = None,
-        frame_shift: Optional[int] = None,
-        fs: Optional[int] = None,
-    ) -> Self:
-        """
-        引数の値を使って自身のインスタンスをコピーします.
-
-        Args:
-            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
-            frame_length (Optional[int], optional): フレーム長
-            frame_shift (Optional[int], optional): フレームシフト
-            fs (Optional[int], optional): サンプリング周波数
-
-        Returns:
-            Cepstrum: コピーしたインスタンス
-        """
-        frame_series = self.frame_series if frame_series is None else frame_series
-        frame_length = self.frame_length if frame_length is None else frame_length
-        frame_shift = self.frame_shift if frame_shift is None else frame_shift
-        fs = self.fs if fs is None else fs
-
-        return Cepstrum(frame_series, frame_length, frame_shift, fs)
-
 
 class MelCepstrum(TimeDomainFrameSeries):
     """
@@ -664,6 +553,7 @@ class MelCepstrum(TimeDomainFrameSeries):
         Returns:
             Cepstrum: ケプストラム
         """
+        assert alpha > 0
         cepstrum = Cepstrum._freqt(
             self.frame_series, self.shape[1] // 2 + 1, self.shape[1] // 2 + 1, -alpha
         )
@@ -674,32 +564,3 @@ class MelCepstrum(TimeDomainFrameSeries):
             self.frame_shift,
             self.fs,
         )
-
-    # 以下継承したメソッド
-
-    @override
-    def copy_with(
-        self,
-        frame_series: Optional[np.ndarray] = None,
-        frame_length: Optional[int] = None,
-        frame_shift: Optional[int] = None,
-        fs: Optional[int] = None,
-    ) -> Self:
-        """
-        引数の値を使って自身のインスタンスをコピーします.
-
-        Args:
-            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
-            frame_length (Optional[int], optional): フレーム長
-            frame_shift (Optional[int], optional): フレームシフト
-            fs (Optional[int], optional): サンプリング周波数
-
-        Returns:
-            MelCepstrum: コピーしたインスタンス
-        """
-        frame_series = self.frame_series if frame_series is None else frame_series
-        frame_length = self.frame_length if frame_length is None else frame_length
-        frame_shift = self.frame_shift if frame_shift is None else frame_shift
-        fs = self.fs if fs is None else fs
-
-        return MelCepstrum(frame_series, frame_length, frame_shift, fs)
