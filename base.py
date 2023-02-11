@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from functools import reduce
 from pathlib import Path
 from typing import Any, Callable, Optional, Tuple, overload
 
@@ -122,9 +123,9 @@ class FrameSeries:
 
         return padded.reshape(padded.shape[0] // frames, frames, padded.shape[1])
 
-    def apply(self, func: Callable[[np.ndarray], np.ndarray], axis: int = 1) -> Self:
+    def map(self, func: Callable[[np.ndarray], np.ndarray], axis: int = 0) -> Self:
         """
-        `axis`に従って関数`func`を適用します.
+        軸`axis`に従って関数`func`を適用します.
 
         Args:
             func (Callable[[np.ndarray], np.ndarray]): 適用する関数
@@ -136,6 +137,43 @@ class FrameSeries:
         return self.copy_with(
             frame_series=np.apply_along_axis(func, axis=axis, arr=self.frame_series)
         )
+
+    def reduce(
+        self,
+        func: Callable[[np.ndarray, np.ndarray], np.ndarray],
+        initial: Optional[np.ndarray] = None,
+        axis: int = 0,
+    ) -> np.ndarray:
+        """
+        軸`axis`に従って集約関数`func`を適用します.
+
+        Args:
+            func (Callable[[np.ndarray, np.ndarray], np.ndarray]): 集約関数
+            initial (Optional[np.ndarray], optional): 初期状態
+            axis (int, optional): 適用する軸
+
+        Returns:
+            np.ndarray: 集計結果
+        """
+        return (
+            reduce(func, self.frame_series if axis == 0 else self.frame_series.T)
+            if initial is None
+            else reduce(
+                func, self.frame_series if axis == 0 else self.frame_series.T, initial
+            )
+        )
+
+    def average(self, axis: int = 0) -> np.ndarray:
+        """
+        軸`axis`に従って平均した系列を返します.
+
+        Args:
+            axis (int, optional): 平均する軸. デフォルトは時間軸です.
+
+        Returns:
+            np.ndarray: 平均した系列
+        """
+        return self.reduce(lambda x, y: x + y, axis=axis) / self.shape[axis]
 
     @overload
     def trim(self, end: int) -> Self:
@@ -166,10 +204,10 @@ class FrameSeries:
         """
         return self.copy_with(frame_series=self.frame_series[start:end, :])
 
-    def concat(self, *others: Self) -> Self:
+    def concat(self, *others: Self, axis: int = 0) -> Self:
         """
-        時間方向にフレームの系列を結合します.
-        連結できるインスタンスは同じプロパティで生成された者同士でなければなりません.
+        軸`axis`に従ってフレームの系列を結合します.
+        連結できるインスタンスは同じプロパティで生成されたインスタンスです.
 
         Raises:
             ValueError: 引数に異なるプロパティで生成されたインスタンスがある場合
@@ -186,14 +224,16 @@ class FrameSeries:
             raise ValueError("結合する全てのインスタンスのプロパティが一致する必要があります")
 
         return self.copy_with(
-            frame_series=np.concatenate(
-                [self.frame_series] + [f.frame_series for f in others], axis=1
+            frame_series=reduce(
+                lambda x, y: np.concatenate([x, y.frame_series], axis=axis),
+                others,
+                self.frame_series,
             )
         )
 
-    def join(self, *others: Self) -> Self:
+    def join(self, *others: Self, axis: int = 0) -> Self:
         """
-        自身のインスタンスを他のインスタンスの間にはさんで結合します.
+        軸`axis`に従って自身のインスタンスを他のインスタンスの間にはさんで結合します.
 
         Example:
 
@@ -202,7 +242,7 @@ class FrameSeries:
         >>> b = FrameSeries(np.zeros(4).reshape((2, 2)) + 1, 1, 1)
         >>> c = FrameSeries(np.zeros(4).reshape((2, 2)) + 2, 1, 1)
         >>> d = FrameSeries(np.zeros(4).reshape((2, 2)) + 3, 1, 1)
-        >>> print(a.join(b, c, d).frame_series)
+        >>> print(a.join(b, c, d, axis=1).frame_series)
         [[1. 1. 0. 2. 2. 0. 3. 3.]
          [1. 1. 0. 2. 2. 0. 3. 3.]]
         ```
@@ -226,16 +266,12 @@ class FrameSeries:
             raise ValueError("結合する全てのインスタンスのプロパティが一致する必要があります")
 
         return self.copy_with(
-            frame_series=np.concatenate(
-                [others[0].frame_series]
-                + [
-                    np.concatenate(
-                        [self.frame_series, other.frame_series],
-                        axis=1,
-                    )
-                    for other in others[1:]
-                ],
-                axis=1,
+            frame_series=reduce(
+                lambda x, y: np.concatenate(
+                    [x, self.frame_series, y.frame_series], axis=axis
+                ),
+                others[1:],
+                others[0].frame_series,
             )
         )
 
@@ -272,10 +308,18 @@ class FrameSeries:
 
         if compress:
             np.savez_compressed(
-                path, frame_series=self.frame_series, **self.properties()
+                path,
+                type=self.__class__.__name__,
+                frame_series=self.frame_series,
+                **self.properties(),
             )
         else:
-            np.savez(path, frame_series=self.frame_series, **self.properties())
+            np.savez(
+                path,
+                type=self.__class__.__name__,
+                frame_series=self.frame_series,
+                **self.properties(),
+            )
 
         return self
 
@@ -287,11 +331,19 @@ class FrameSeries:
         Args:
             path (str): npzファイルのパス
 
+        Raises:
+            TypeError: 読み込むインスタンスのタイプが一致しない場合
+
         Returns:
             Self: 読み込んだインスタンス
         """
         npz = np.load(path, allow_pickle=True)
         params = {k: npz[k] for k in npz.files}
+        type_name = params.pop("type")
+        
+        if type_name != cls.__name__:
+            raise TypeError("{} は type:{} で読み込む必要があります.")
+        
         return cls(**params)
 
     def plot(self, color_map: str = "magma") -> None:

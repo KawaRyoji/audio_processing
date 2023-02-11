@@ -1,13 +1,21 @@
 from __future__ import annotations
+from functools import reduce
 
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 import librosa
 import numpy as np
 from scipy.signal.windows import get_window
 from typing_extensions import Self, override
 
-from base import FrameSeries, FreqDomainFrameSeries, TimeDomainFrameSeries
+from audio_processing.base import (
+    FrameSeries,
+    FreqDomainFrameSeries,
+    TimeDomainFrameSeries,
+)
+
+if TYPE_CHECKING:
+    from audio_processing.fileio import WavFile
 
 
 class Waveform(TimeDomainFrameSeries):
@@ -82,47 +90,44 @@ class Waveform(TimeDomainFrameSeries):
         else:
             raise TypeError("窓関数はstrもしくはnp.ndarrayでなければいけません.")
 
-        if fft_point is None:
-            fft_point = self.shape[1]
-
-        to_spectrum = lambda frame: np.fft.fft(frame, n=fft_point)
-        spectrum = to_spectrum(self.frame_series * window_func)
+        fft_point = self.shape[1] if fft_point is None else fft_point
 
         return Spectrum(
-            spectrum,
+            np.fft.fft(self.frame_series * window_func),
             self.frame_length,
             self.frame_shift,
             fft_point,
             self.fs,
         )
 
-    # 以下継承したメソッド
-    @override
-    def copy_with(
-        self,
-        frame_series: Optional[np.ndarray] = None,
-        frame_length: Optional[int] = None,
-        frame_shift: Optional[int] = None,
-        fs: Optional[int] = None,
-    ) -> Self:
+    def to_wav_file(self) -> WavFile:
         """
-        引数の値を使って自身のインスタンスをコピーします.
-
-        Args:
-            frame_series (Optional[np.ndarray], optional): フレーム単位の系列
-            frame_length (Optional[int], optional): フレーム長
-            frame_shift (Optional[int], optional): フレームシフト
-            fs (Optional[int], optional): サンプリング周波数
+        フレームの系列の時間波形を1次元の時間波形に再構成し, WavFileに変換します.
 
         Returns:
-            Waveform: コピーしたインスタンス
+            WavFile: 再構成した時間波形のWavFile
         """
-        frame_series = self.frame_series if frame_series is None else frame_series
-        frame_length = self.frame_length if frame_length is None else frame_length
-        frame_shift = self.frame_shift if frame_shift is None else frame_shift
-        fs = self.fs if fs is None else fs
+        from audio_processing.fileio import WavFile  # 循環参照対策
 
-        return Waveform(frame_series, frame_length, frame_shift, fs)
+        # TODO: 高速化
+        # x = [[0,1,2],[3,4,5],[6,7,8]], シフト長1の場合
+        # 1回目
+        # [0,1,2,0] +   :シフト長分右にゼロを埋める
+        # [0,3,4,5] =   :上([0,1,2])の要素数(3) + シフト長(1) - 自身の要素数(3)分左にゼロを埋める
+        # [0,4,6,5]
+        # 2回目
+        # [0,4,6,5,0] + :シフト長分右にゼロを埋める
+        # [0,0,6,7,8] = :上([0,4,6,5])の要素数(4) + シフト長(1) - 自身の要素数(3)分左にゼロを埋める
+        # [0,4,12,12,8] :解
+        # istftでやっていることと同じ
+        return WavFile(
+            data=self.reduce(
+                lambda x, y: np.pad(x, (0, self.frame_shift))
+                + np.pad(y, (len(x) + self.frame_shift - len(y), 0)),
+            ),
+            fs=self.fs,
+            dtype=self.frame_series.dtype,
+        )
 
 
 class Spectrum(FreqDomainFrameSeries):
@@ -206,11 +211,20 @@ class Spectrum(FreqDomainFrameSeries):
             Waveform: 変換した時間波形
         """
         return Waveform(
-            np.real(np.fft.ifft(self.frame_series)),
+            np.fft.ifft(self.frame_series).real,
             self.frame_length,
             self.frame_shift,
             self.fs,
         )
+
+    def decompose(self) -> Tuple[AmplitudeSpectrum, PhaseSpectrum]:
+        """
+        スペクトルを振幅スペクトルと位相スペクトルに分解します.
+
+        Returns:
+            Tuple[AmplitudeSpectrum, PhaseSpectrum]: 振幅スペクトルと位相スペクトル
+        """
+        return self.to_amplitude(), self.to_phase()
 
     @classmethod
     def restore(cls, amplitude: AmplitudeSpectrum, phase: PhaseSpectrum) -> Spectrum:
@@ -270,8 +284,6 @@ class Spectrum(FreqDomainFrameSeries):
         frame_shift: Optional[int] = None,
         fft_point: Optional[int] = None,
         fs: Optional[int] = None,
-        dB: Optional[bool] = None,
-        power: Optional[bool] = None,
     ) -> Self:
         """
         引数の値を使って自身のインスタンスをコピーします.
@@ -282,8 +294,6 @@ class Spectrum(FreqDomainFrameSeries):
             frame_shift (Optional[int], optional): フレームシフト
             fft_point (Optional[int], optional): FFTポイント数
             fs (Optional[int], optional): サンプリング周波数
-            dB (Optional[bool], optional): dB値であるか
-            power (Optional[bool], optional): パワー値であるか
 
         Returns:
             Spectrum: コピーしたインスタンス
@@ -293,8 +303,6 @@ class Spectrum(FreqDomainFrameSeries):
         frame_shift = self.frame_shift if frame_shift is None else frame_shift
         fft_point = self.fft_point if fft_point is None else fft_point
         fs = self.fs if fs is None else fs
-        dB = self.dB if dB is None else dB
-        power = self.power if power is None else power
 
         return Spectrum(frame_series, frame_length, frame_shift, fft_point, fs)
 
@@ -318,15 +326,17 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
             raise ValueError("この振幅スペクトルはケプストラムに変換できません.")
 
         return Cepstrum(
-            np.real(
-                np.fft.ifft(
-                    np.log(
+            np.fft.ifft(
+                np.log(
+                    np.where(  # 0をepsで置換している
+                        self.frame_series == 0,
+                        np.full_like(
+                            self.frame_series, np.finfo(self.frame_series.dtype).eps
+                        ),
                         self.frame_series,
-                        out=np.zeros_like(self.frame_series),
-                        where=self.frame_series != 0,
-                    )
+                    ),
                 )
-            ),
+            ).real,
             self.frame_length,
             self.frame_shift,
             self.fs,
@@ -342,8 +352,10 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
         Returns:
             MelSpectrum: メルスペクトル
         """
-        filter = librosa.filters.mel(sr=self.fs, n_fft=self.fft_point, n_mels=bins)
-        melspectrum = np.dot(filter, self.frame_series[:, : self.shape[1] // 2 + 1].T).T
+        filter = librosa.filters.mel(
+            sr=self.fs, n_fft=self.fft_point, n_mels=bins, dtype=self.frame_series.dtype
+        )
+        melspectrum = np.dot(self.frame_series[:, : self.shape[1] // 2 + 1].T, filter)
         return MelSpectrum(
             FreqDomainFrameSeries.to_symmetry(melspectrum),
             self.frame_length,
@@ -368,7 +380,7 @@ class MelSpectrum(FreqDomainFrameSeries):
     メルスペクトルのフレームの系列を扱うクラスです.
     """
 
-    def to_cepstrum(self) -> MelCepstrum:
+    def to_mel_cepstrum(self) -> MelCepstrum:
         """
         メルスペクトルをメルケプストラムに変換します.
 
@@ -382,15 +394,17 @@ class MelSpectrum(FreqDomainFrameSeries):
             raise ValueError("このメルスペクトルはメルケプストラムに変換できません.")
 
         return MelCepstrum(
-            np.real(
-                np.fft.ifft(
-                    np.log(
+            np.fft.ifft(
+                np.log(
+                    np.where(  # 0をepsに置換している
+                        self.frame_series == 0,
+                        np.full_like(
+                            self.frame_series, np.finfo(self.frame_series.dtype).eps
+                        ),
                         self.frame_series,
-                        out=np.zeros_like(self.frame_series),
-                        where=self.frame_series != 0,
                     )
-                )
-            ),
+                ),
+            ).real,
             self.frame_length,
             self.frame_shift,
             self.fs,
@@ -415,7 +429,7 @@ class Cepstrum(TimeDomainFrameSeries):
         fft_point = self.shape[1] if fft_point is None else fft_point
 
         return AmplitudeSpectrum(
-            np.exp(np.real(np.fft.fft(self.frame_series, n=fft_point))),
+            np.exp(np.fft.fft(self.frame_series, n=fft_point).real),
             self.frame_length,
             self.frame_shift,
             fft_point,
@@ -459,19 +473,21 @@ class Cepstrum(TimeDomainFrameSeries):
             self.fs,
         )
 
-    def to_mel_cepstrum(self, bins: int, alpha: float) -> MelCepstrum:
+    def to_mel_cepstrum(self, alpha: float, bins: Optional[int] = None) -> MelCepstrum:
         """
         ケプストラムからメルケプストラムに変換します.
         この処理は処理時間がかかるので注意してください.
 
         Args:
-            bins (int): メルのビン数
             alpha (float): 伸縮率 (alpha > 0)
+            bins (Optional[int], optional): メルのビン数. 指定しない場合
 
         Returns:
             MelCepstrum: メルケプストラム
         """
         assert alpha > 0
+        bins = self.shape[1] // 2 + 1 if bins is None else bins
+
         mel_cepstrum = self._freqt(
             self.frame_series, self.shape[1] // 2 + 1, bins, alpha
         )
@@ -501,13 +517,13 @@ class Cepstrum(TimeDomainFrameSeries):
         """
         beta = 1 - alpha**2
         c: np.ndarray = cepstrum[:, :n]
-        h_mem: np.ndarray = np.zeros((cepstrum.shape[0], bins + 1))
-        h: np.ndarray = np.zeros((cepstrum.shape[0], bins + 1))
+        h_mem: np.ndarray = np.zeros((cepstrum.shape[0], bins), dtype=cepstrum.dtype)
+        h: np.ndarray = np.zeros((cepstrum.shape[0], bins), dtype=cepstrum.dtype)
 
-        for k in range(n, -1, -1):  # [n 0]
+        for k in range(n - 1, -1, -1):  # [n-1 0]
             h[:, 0] = c[:, k] + alpha * h_mem[:, 0]
             h[:, 1] = beta * h_mem[:, 0] + alpha * h_mem[:, 1]
-            for i in range(2, bins + 1):
+            for i in range(2, bins):
                 h[:, i] = h_mem[:, i - 1] + alpha * (h_mem[:, i] - h[:, i - 1])
             h_mem = np.copy(h)
 
@@ -530,11 +546,9 @@ class MelCepstrum(TimeDomainFrameSeries):
             MelSpectrum: メルスペクトル
         """
         fft_point = self.shape[1] if fft_point is None else fft_point
-        to_spectrum = lambda frame: np.fft.fft(frame, n=fft_point)
-        spectrum = np.exp(np.real(to_spectrum(self.frame_series)))
 
         return MelSpectrum(
-            spectrum,
+            np.exp(np.fft.fft(self.frame_series, n=fft_point).real),
             self.frame_length,
             self.frame_shift,
             fft_point,
@@ -559,7 +573,7 @@ class MelCepstrum(TimeDomainFrameSeries):
         )
 
         return Cepstrum(
-            cepstrum,
+            FreqDomainFrameSeries.to_symmetry(cepstrum),
             self.frame_length,
             self.frame_shift,
             self.fs,
