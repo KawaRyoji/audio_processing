@@ -1,11 +1,17 @@
+from __future__ import annotations
+
 import os
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import librosa
+import matplotlib.pyplot as plt
 import numpy as np
 import soundfile
-from features import Waveform
+from typing_extensions import Self
+
+if TYPE_CHECKING:
+    from audio_processing.features import Waveform
 
 
 class WavFile:
@@ -57,7 +63,7 @@ class WavFile:
         data, fs = librosa.core.load(path, sr=fs)
         return cls(data, fs, dtype=dtype)
 
-    def resample(self, target_fs: int) -> "WavFile":
+    def resample(self, target_fs: int) -> Self:
         """
         サンプリング周波数を変換します.
         目標のサンプリング周波数が現在のサンプリング周波数と同じ場合は自身のインスタンスを返します.
@@ -77,9 +83,7 @@ class WavFile:
 
         return WavFile(resampled, target_fs, dtype=resampled.dtype)
 
-    def save(
-        self, path: str, target_bits: int = 16, overwrite: bool = False
-    ) -> "WavFile":
+    def save(self, path: str, target_bits: int = 16, overwrite: bool = False) -> Self:
         """
         wavファイルに書き込みます.
         `overwrite`が`False`の場合かつすでにファイルが存在する場合上書きされません.
@@ -100,6 +104,25 @@ class WavFile:
 
         soundfile.write(path, self.data, self.fs, "PCM_{}".format(target_bits))
 
+        return self
+
+    def plot(self) -> None:
+        x = np.arange(self.data.shape[0]) / self.fs
+        plt.plot(x, self.data)
+        plt.xlabel("Time (s)", fontsize=16)
+        plt.ylabel("Amplitude", fontsize=16)
+        plt.grid(True)
+        plt.tight_layout()
+
+    def show_fig(self) -> Self:
+        self.plot()
+        plt.show()
+        return self
+
+    def save_as_fig(self, path: str) -> Self:
+        self.plot()
+        plt.savefig(path)
+        plt.close()
         return self
 
     def to_frames(
@@ -123,6 +146,8 @@ class WavFile:
         Returns:
             Waveform: フレーム系列の時間波形
         """
+        from audio_processing.features import Waveform
+
         return Waveform.create(
             self.data,
             frame_length,
@@ -135,7 +160,7 @@ class WavFile:
 
     def to_npz(
         self, path: str, compress: bool = False, overwrite: bool = False
-    ) -> "WavFile":
+    ) -> Self:
         """
         自身のインスタンスをnpzファイルに保存します.
         `overwrite`が`False`の場合かつすでにファイルが存在する場合上書きされません.
@@ -162,7 +187,7 @@ class WavFile:
         return self
 
     @classmethod
-    def from_npz(cls, path: str) -> "WavFile":
+    def from_npz(cls, path: str) -> WavFile:
         """
         npzファイルからインスタンスを生成します.
 
@@ -178,6 +203,5 @@ class WavFile:
 
         return cls(data, fs, dtype=data.dtype)
 
-    
     def __str__(self) -> str:
         return "data shape: {}\nsampling frequency: {}".format(self.data.shape, self.fs)
