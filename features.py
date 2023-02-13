@@ -1,5 +1,4 @@
 from __future__ import annotations
-from functools import reduce
 
 from typing import TYPE_CHECKING, Optional, Tuple, Union
 
@@ -54,14 +53,15 @@ class Waveform(TimeDomainFrameSeries):
             time_series = np.pad(time_series, pad_width=pad, mode=padding_mode)
 
         num_frame = 1 + (len(time_series) - frame_length) // frame_shift
-        frames = []
-        for i in range(num_frame):
-            start, end = cls.edge_point(i, frame_length, frame_shift)
-            frames.append(time_series[start:end])
+        frames = np.array(
+            [
+                time_series[slice(*cls.edge_point(i, frame_length, frame_shift))]
+                for i in range(num_frame)
+            ],
+            dtype=dtype,
+        )
 
-        frames_np: np.ndarray = np.array(frames, dtype=dtype)
-
-        return cls(frames_np, frame_length, frame_shift, fs)
+        return cls(frames, frame_length, frame_shift, fs)
 
     def to_spectrum(
         self,

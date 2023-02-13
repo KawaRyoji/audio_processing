@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from functools import reduce
 from pathlib import Path
-from typing import Any, Callable, Optional, Tuple, overload
+from typing import Any, Callable, Dict, Optional, Tuple, overload
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -118,7 +118,15 @@ class FrameSeries:
         """
         padded: np.ndarray = np.pad(
             self.frame_series,
-            ((0, (frames - (self.frame_series.shape[0] % frames))), (0, 0)),
+            (
+                (
+                    0,
+                    0
+                    if self.frame_series.shape[0] % frames == 0
+                    else (frames - (self.frame_series.shape[0] % frames)),
+                ),
+                (0, 0),
+            ),
         )
 
         return padded.reshape(padded.shape[0] // frames, frames, padded.shape[1])
@@ -340,10 +348,10 @@ class FrameSeries:
         npz = np.load(path, allow_pickle=True)
         params = {k: npz[k] for k in npz.files}
         type_name = params.pop("type")
-        
+
         if type_name != cls.__name__:
             raise TypeError("{} は type:{} で読み込む必要があります.")
-        
+
         return cls(**params)
 
     def plot(self, color_map: str = "magma") -> None:
@@ -398,6 +406,28 @@ class FrameSeries:
             Self: 自身のインスタンス
         """
         self.plot(color_map=color_map)
+        plt.savefig(path)
+        plt.close()
+        return self
+
+    def plot_with(
+        self,
+        plot_func: Callable[[np.ndarray, Dict[str, Any]], None],
+        path: str,
+        **kwargs: Any,
+    ) -> Self:
+        """
+        任意のプロット関数を使ってフレームの系列をプロットし, 保存します.
+        プロット関数に渡されるのは, 横軸が時間, 縦軸が系列の値の配列です.
+
+        Args:
+            plot_func (Callable[[np.ndarray, Dict[str, Any]], None]): プロットする関数. kwargsで引数を渡せます.
+            path (str): 保存するパス.
+
+        Returns:
+            Self: 自身のインスタンス
+        """
+        plot_func(self.frame_series.T, **kwargs)
         plt.savefig(path)
         plt.close()
         return self
