@@ -350,7 +350,7 @@ class FrameSeries:
         type_name = params.pop("type")
 
         if type_name != cls.__name__:
-            raise TypeError("{} は type:{} で読み込む必要があります.")
+            raise TypeError("{} は type:{} で読み込む必要があります.".format(path, type_name))
 
         return cls(**params)
 
