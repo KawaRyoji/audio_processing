@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from functools import reduce
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple, overload
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -183,22 +183,26 @@ class FrameSeries:
         """
         return self.reduce(lambda x, y: x + y, axis=axis) / self.shape[axis]
 
-    @overload
-    def trim(self, end: int) -> Self:
+    def trim_by_value(self, start: int, end: int) -> FrameSeries:
         """
-        時間軸でフレームの系列を切り取ります.
+        値軸でフレームの系列を切り取ります.
         指定した終了インデックスの部分は切り取った後のフレームの系列に含まれません.
+        この操作は特徴量によっては不整合を起こす可能性があるため, 元のクラスには戻らず全てFrameSeriesになります.
 
         Args:
+            start (int): 開始インデックス
             end (int): 終了インデックス
 
         Returns:
-            Self: 切り取った後のフレームの系列
+            FrameSeries: 切り取った後のフレームの系列
         """
-        return self.trim(0, end)
+        return FrameSeries(
+            frame_series=self.frame_series[:, start:end],
+            frame_length=self.frame_length,
+            frame_shift=self.frame_shift,
+        )
 
-    @overload
-    def trim(self, start: int, end: int) -> Self:
+    def trim_by_time(self, start: int, end: int) -> Self:
         """
         時間軸でフレームの系列を切り取ります.
         指定した終了インデックスの部分は切り取った後のフレームの系列に含まれません.
