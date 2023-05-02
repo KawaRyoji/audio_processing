@@ -19,14 +19,10 @@ class FrameSeries:
     def __init__(
         self,
         frame_series: np.ndarray,
-        frame_length: int,
-        frame_shift: int,
     ) -> None:
         """
         Args:
             frame_series (np.ndarray): フレーム単位の系列(2次元を想定)
-            frame_length (int): フレーム長
-            frame_shift (int): シフト長
 
         Raises:
             ValueError: フレームの系列が2次元でない場合
@@ -35,28 +31,6 @@ class FrameSeries:
             raise ValueError("フレームの系列は2次元でなければなりません.")
 
         self.__frame_series = frame_series
-        self.__frame_length = frame_length
-        self.__frame_shift = frame_shift
-
-    @property
-    def frame_length(self) -> int:
-        """
-        フレーム長を返します.
-
-        Returns:
-            int: フレーム長
-        """
-        return self.__frame_length
-
-    @property
-    def frame_shift(self) -> int:
-        """
-        シフト長を返します.
-
-        Returns:
-            int: シフト長
-        """
-        return self.__frame_shift
 
     @property
     def shape(self) -> Tuple:
@@ -196,11 +170,7 @@ class FrameSeries:
         Returns:
             FrameSeries: 切り取った後のフレームの系列
         """
-        return FrameSeries(
-            frame_series=self.frame_series[:, start:end],
-            frame_length=self.frame_length,
-            frame_shift=self.frame_shift,
-        )
+        return FrameSeries(frame_series=self.frame_series[:, start:end])
 
     def trim_by_time(self, start: int, end: int) -> Self:
         """
@@ -250,10 +220,10 @@ class FrameSeries:
         Example:
 
         ```python
-        >>> a = FrameSeries(np.zeros(2).reshape((2, 1)), 1, 1)
-        >>> b = FrameSeries(np.zeros(4).reshape((2, 2)) + 1, 1, 1)
-        >>> c = FrameSeries(np.zeros(4).reshape((2, 2)) + 2, 1, 1)
-        >>> d = FrameSeries(np.zeros(4).reshape((2, 2)) + 3, 1, 1)
+        >>> a = FrameSeries(np.zeros(2).reshape((2, 1)))
+        >>> b = FrameSeries(np.zeros(4).reshape((2, 2)) + 1)
+        >>> c = FrameSeries(np.zeros(4).reshape((2, 2)) + 2)
+        >>> d = FrameSeries(np.zeros(4).reshape((2, 2)) + 3)
         >>> print(a.join(b, c, d, axis=1).frame_series)
         [[1. 1. 0. 2. 2. 0. 3. 3.]
          [1. 1. 0. 2. 2. 0. 3. 3.]]
@@ -294,10 +264,7 @@ class FrameSeries:
         Returns:
             dict[str, Any]: プロパティの辞書
         """
-        return {
-            "frame_length": self.frame_length,
-            "frame_shift": self.frame_shift,
-        }
+        return {}
 
     def save(self, path: str, compress: bool = False, overwrite: bool = False) -> Self:
         """
@@ -416,8 +383,9 @@ class FrameSeries:
 
     def plot_with(
         self,
-        plot_func: Callable[[np.ndarray, Dict[str, Any]], None],
+        plot_func: Callable[[np.ndarray, Tuple[Any, ...], Dict[str, Any]], None],
         path: str,
+        *args: Any,
         **kwargs: Any,
     ) -> Self:
         """
@@ -425,13 +393,13 @@ class FrameSeries:
         プロット関数に渡されるのは, 横軸が時間, 縦軸が系列の値の配列です.
 
         Args:
-            plot_func (Callable[[np.ndarray, Dict[str, Any]], None]): プロットする関数. kwargsで引数を渡せます.
+            plot_func (Callable[[np.ndarray, Dict[str, Any]], None]): プロットする関数. 第一引数に系列の配列が渡されます. args, kwargsで任意の引数を渡せます.
             path (str): 保存するパス.
 
         Returns:
             Self: 自身のインスタンス
         """
-        plot_func(self.frame_series.T, **kwargs)
+        plot_func(self.frame_series.T, *args, **kwargs)
         plt.savefig(path)
         plt.close()
         return self
@@ -439,25 +407,19 @@ class FrameSeries:
     def copy_with(
         self,
         frame_series: Optional[np.ndarray] = None,
-        frame_length: Optional[int] = None,
-        frame_shift: Optional[int] = None,
     ) -> Self:
         """
         引数の値を使って自身のインスタンスをコピーします.
 
         Args:
             frame_series (Optional[np.ndarray], optional): フレーム単位の系列
-            frame_length (Optional[int], optional): フレーム長
-            frame_shift (Optional[int], optional): フレームシフト
 
         Returns:
             Self: コピーしたインスタンス
         """
         frame_series = self.frame_series if frame_series is None else frame_series
-        frame_length = self.frame_length if frame_length is None else frame_length
-        frame_shift = self.frame_shift if frame_shift is None else frame_shift
 
-        return FrameSeries(frame_series, frame_length, frame_shift)
+        return FrameSeries(frame_series)
 
     def same_property(self, other: Self) -> bool:
         """
@@ -557,8 +519,30 @@ class TimeDomainFrameSeries(FrameSeries):
             frame_shift (int): シフト長
             fs (int): サンプリング周波数
         """
-        super().__init__(frame_series, frame_length, frame_shift)
+        super().__init__(frame_series)
+        self.__frame_length = frame_length
+        self.__frame_shift = frame_shift
         self.__fs = fs
+
+    @property
+    def frame_length(self) -> int:
+        """
+        フレーム長を返します.
+
+        Returns:
+            int: フレーム長
+        """
+        return self.__frame_length
+
+    @property
+    def frame_shift(self) -> int:
+        """
+        シフト長を返します.
+
+        Returns:
+            int: シフト長
+        """
+        return self.__frame_shift
 
     @property
     def fs(self) -> int:
@@ -601,7 +585,13 @@ class TimeDomainFrameSeries(FrameSeries):
     @override
     def properties(self) -> dict[str, Any]:
         properties = super().properties()
-        properties.update({"fs": self.__fs})
+        properties.update(
+            {
+                "frame_length": self.frame_length,
+                "frame_shift": self.frame_shift,
+                "fs": self.fs,
+            }
+        )
         return properties
 
 
@@ -631,11 +621,33 @@ class FreqDomainFrameSeries(FrameSeries):
             dB (bool, optional): この系列がdB値であるか. Trueの場合, この系列はdB値であることを示します.
             power (bool, optional): この系列がパワーであるか. Trueの場合, この系列はパワー値であることを示します.
         """
-        super().__init__(frame_series, frame_length, frame_shift)
+        super().__init__(frame_series)
+        self.__frame_length = frame_length
+        self.__frame_shift = frame_shift
         self.__fs = fs
         self.__fft_point = fft_point
         self.__dB = dB
         self.__power = power
+
+    @property
+    def frame_length(self) -> int:
+        """
+        フレーム長を返します.
+
+        Returns:
+            int: フレーム長
+        """
+        return self.__frame_length
+
+    @property
+    def frame_shift(self) -> int:
+        """
+        シフト長を返します.
+
+        Returns:
+            int: シフト長
+        """
+        return self.__frame_shift
 
     @property
     def dB(self) -> bool:
@@ -778,7 +790,7 @@ class FreqDomainFrameSeries(FrameSeries):
         self,
         up_to_nyquist: bool = True,
         color_map: str = "magma",
-    ) -> Self:
+    ) -> None:
         """
         周波数領域のフレームの系列を2次元プロットします.
 
@@ -845,6 +857,8 @@ class FreqDomainFrameSeries(FrameSeries):
         properties = super().properties()
         properties.update(
             {
+                "frame_length": self.frame_length,
+                "frame_shift": self.frame_shift,
                 "fs": self.fs,
                 "fft_point": self.fft_point,
                 "dB": self.dB,

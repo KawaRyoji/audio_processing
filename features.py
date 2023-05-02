@@ -253,20 +253,6 @@ class Spectrum(FreqDomainFrameSeries):
                 )
             )
 
-        if amplitude.frame_length != phase.frame_length:
-            raise ValueError(
-                "振幅スペクトルと位相スペクトルのフレーム長が異なっています. amplitude:{} phase:{}".format(
-                    amplitude.frame_length, phase.frame_length
-                )
-            )
-
-        if amplitude.frame_shift != phase.frame_shift:
-            raise ValueError(
-                "振幅スペクトルと位相スペクトルのフレームシフトが異なっています. amplitude:{} phase:{}".format(
-                    amplitude.frame_shift, phase.frame_shift
-                )
-            )
-
         return Spectrum(
             np.multiply(amplitude.frame_series, np.exp(1j * phase.frame_series)),
             amplitude.frame_length,
