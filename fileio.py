@@ -11,7 +11,7 @@ import soundfile
 from typing_extensions import Self
 
 if TYPE_CHECKING:
-    from audio_processing.features import Waveform
+    from audio_processing.features import WaveformFrameSeries
 
 
 class WavFile:
@@ -132,7 +132,7 @@ class WavFile:
         padding: bool = True,
         padding_mode: str = "reflect",
         dtype: np.dtype = np.float32,
-    ) -> Waveform:
+    ) -> WaveformFrameSeries:
         """
         フレーム系列の時間波形に変換します.
 
@@ -146,9 +146,9 @@ class WavFile:
         Returns:
             Waveform: フレーム系列の時間波形
         """
-        from audio_processing.features import Waveform
+        from audio_processing.features import WaveformFrameSeries
 
-        return Waveform.create(
+        return WaveformFrameSeries.from_waveform(
             self.data,
             frame_length,
             frame_shift,

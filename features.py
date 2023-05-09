@@ -17,15 +17,15 @@ if TYPE_CHECKING:
     from audio_processing.fileio import WavFile
 
 
-class Waveform(TimeDomainFrameSeries):
+class WaveformFrameSeries(TimeDomainFrameSeries):
     """
     時間波形のフレームの系列を扱うクラスです.
     """
 
     @classmethod
-    def create(
+    def from_waveform(
         cls,
-        time_series: np.ndarray,
+        waveform: np.ndarray,
         frame_length: int,
         frame_shift: int,
         fs: int,
@@ -37,7 +37,7 @@ class Waveform(TimeDomainFrameSeries):
         時間波形から各種パラメータを使ってフレームの系列に変換し, `Waveform`インスタンスを生成します.
 
         Args:
-            time_series (np.ndarray): 時間波形(1次元)
+            waveform (np.ndarray): 時間波形(1次元)
             frame_length (int): フレーム長
             frame_shift (int): シフト長
             fs (int): サンプリング周波数
@@ -50,12 +50,12 @@ class Waveform(TimeDomainFrameSeries):
         """
         if padding:
             pad = frame_length // 2
-            time_series = np.pad(time_series, pad_width=pad, mode=padding_mode)
+            waveform = np.pad(waveform, pad_width=pad, mode=padding_mode)
 
-        num_frame = 1 + (len(time_series) - frame_length) // frame_shift
+        num_frame = 1 + (len(waveform) - frame_length) // frame_shift
         frames = np.array(
             [
-                time_series[slice(*cls.edge_point(i, frame_length, frame_shift))]
+                waveform[slice(*cls.edge_point(i, frame_length, frame_shift))]
                 for i in range(num_frame)
             ],
             dtype=dtype,
@@ -203,14 +203,14 @@ class Spectrum(FreqDomainFrameSeries):
             self.frame_shift,
         )
 
-    def to_waveform(self) -> Waveform:
+    def to_waveform(self) -> WaveformFrameSeries:
         """
         スペクトルを時間波形に変換します.
 
         Returns:
             Waveform: 変換した時間波形
         """
-        return Waveform(
+        return WaveformFrameSeries(
             np.fft.ifft(self.frame_series).real,
             self.frame_length,
             self.frame_shift,

@@ -19,6 +19,7 @@ class FrameSeries:
     def __init__(
         self,
         frame_series: np.ndarray,
+        dtype: Optional[np.dtype] = None,
     ) -> None:
         """
         Args:
@@ -30,7 +31,9 @@ class FrameSeries:
         if len(frame_series.shape) != 2:
             raise ValueError("フレームの系列は2次元でなければなりません.")
 
-        self.__frame_series = frame_series
+        self.__frame_series = frame_series.astype(
+            dtype if dtype is not None else frame_series.dtype
+        )
 
     @property
     def shape(self) -> Tuple:
@@ -51,6 +54,16 @@ class FrameSeries:
             np.ndarray: フレームの系列
         """
         return self.__frame_series
+
+    @property
+    def dtype(self) -> np.dtype:
+        """
+        フレームの系列のデータタイプを返します.
+
+        Returns:
+            np.dtype: データタイプ
+        """
+        return self.__frame_series.dtype
 
     @classmethod
     def edge_point(
@@ -492,6 +505,7 @@ class FrameSeries:
         string += "------------------------------------\n"
         string += "type: " + self.__class__.__name__ + "\n"
         string += "data shape: {}\n".format(self.shape)
+        string += "data type: {}\n".format(self.dtype)
         for feature, value in self.properties().items():
             string += "{}: {}\n".format(feature, value)
         string += "------------------------------------\n"
