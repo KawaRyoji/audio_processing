@@ -298,6 +298,34 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
     振幅スペクトルのフレームの系列を扱うクラスです.
     """
 
+    def to_wav_file(self, iterations: int = 20) -> WavFile:
+        """
+        振幅スペクトルから位相復元をしてwavファイルを生成します.
+        位相復元アルゴリズムはlibrosaのgiriffinlimを使用します.
+
+        Args:
+            iterations (int, optional): griffinlimアルゴリズムの反復回数
+
+        Returns:
+            WavFile: 位相復元したスペクトルから生成したwavファイル
+        """
+        from audio_processing.fileio import WavFile  # 循環参照対策
+        
+        if self.dB:
+            print("振幅スペクトルを線形値に変換してください.")
+
+        return WavFile(
+            data=librosa.griffinlim(
+                self.frame_series.T[: self.fft_point // 2 + 1, :],
+                hop_length=self.frame_shift,
+                win_length=self.frame_length,
+                n_fft=self.fft_point,
+                n_iter=iterations,
+            ),
+            fs=self.fs,
+            dtype=self.dtype,
+        )
+
     def to_cepstrum(self) -> Cepstrum:
         """
         振幅スペクトルをケプストラムに変換します.
@@ -358,7 +386,20 @@ class PhaseSpectrum(FrameSeries):
     位相スペクトルのフレームの系列を扱うクラスです.
     """
 
-    ...
+    @classmethod
+    def griffin_lim(cls, spectrum: AmplitudeSpectrum, iterations: int = 200) -> Self:
+        if spectrum.dB:
+            print("振幅スペクトルを線形値に変換してください.")
+
+        return cls(
+            librosa.griffinlim(
+                spectrum.frame_series.T[: spectrum.fft_point // 2 + 1, :],
+                hop_length=spectrum.frame_shift,
+                win_length=spectrum.frame_length,
+                n_fft=spectrum.fft_point,
+                n_iter=iterations,
+            )
+        )
 
 
 class MelSpectrum(FreqDomainFrameSeries):

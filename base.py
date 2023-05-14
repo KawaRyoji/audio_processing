@@ -432,7 +432,7 @@ class FrameSeries:
         """
         frame_series = self.frame_series if frame_series is None else frame_series
 
-        return FrameSeries(frame_series)
+        return self.__class__(frame_series)
 
     def same_property(self, other: Self) -> bool:
         """
@@ -594,7 +594,7 @@ class TimeDomainFrameSeries(FrameSeries):
         frame_shift = self.frame_shift if frame_shift is None else frame_shift
         fs = self.fs if fs is None else fs
 
-        return TimeDomainFrameSeries(frame_series, frame_length, frame_shift, fs)
+        return self.__class__(frame_series, frame_length, frame_shift, fs)
 
     @override
     def properties(self) -> dict[str, Any]:
@@ -743,9 +743,9 @@ class FreqDomainFrameSeries(FrameSeries):
             return self
 
         if self.power:
-            linear_func = lambda x: np.power(x / 10, 10)
+            linear_func = lambda x: np.power(10, x / 10)
         else:
-            linear_func = lambda x: np.power(x / 20, 10)
+            linear_func = lambda x: np.power(10, x / 20)
 
         return self.copy_with(frame_series=linear_func(self.frame_series), dB=False)
 
@@ -915,6 +915,6 @@ class FreqDomainFrameSeries(FrameSeries):
         dB = self.dB if dB is None else dB
         power = self.power if power is None else power
 
-        return FreqDomainFrameSeries(
+        return self.__class__(
             frame_series, frame_length, frame_shift, fft_point, fs, dB=dB, power=power
         )
