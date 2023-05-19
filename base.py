@@ -199,6 +199,44 @@ class FrameSeries:
         """
         return self.copy_with(frame_series=self.frame_series[start:end, :])
 
+    def pad_by_value(
+        self, pad_width: Tuple[int, int], mode: str = "constant"
+    ) -> FrameSeries:
+        """
+        値軸でフレームの系列をパディングします.
+        この操作は特徴量によっては不整合を起こす可能性があるため, 元の暮らすには戻らず全てFrameSeriesになります.
+
+        Args:
+            pad_width (Tuple[int, int]): パディングの長さ
+            mode (str): パディングの方法 デフォルトでは0埋めされます
+
+        Returns:
+            FrameSeries: パディングされたフレームの系列
+        """
+        return FrameSeries(
+            frame_series=np.pad(
+                self.frame_series, pad_width=((0, 0), pad_width), mode=mode
+            ),
+            dtype=self.dtype,
+        )
+
+    def pad_by_time(self, pad_width: Tuple[int, int], mode: str = "constant") -> Self:
+        """
+        時間軸でフレームの系列をパディングします.
+
+        Args:
+            pad_width (Tuple[int, int]): パディングの長さ
+            mode (str): パディングの方法 デフォルトでは0埋めされます
+
+        Returns:
+            Self: パディングされたフレームの系列
+        """
+        return self.copy_with(
+            frame_series=np.pad(
+                self.frame_series, pad_width=(pad_width, (0, 0)), mode=mode
+            )
+        )
+
     def concat(self, *others: Self, axis: int = 0) -> Self:
         """
         軸`axis`に従ってフレームの系列を結合します.
@@ -347,19 +385,11 @@ class FrameSeries:
         Args:
             color_map (str, optional): プロットに使用するカラーマップのタイプ
         """
-        fig, ax = plt.subplots(
-            dpi=100,
-            figsize=(self.shape[0] / 100, self.shape[1] / 100),
-        )
-
-        ax.pcolor(self.frame_series.T, cmap=color_map)
-        fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
-        ax.axes.xaxis.set_ticks([])
-        ax.axes.yaxis.set_ticks([])
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_visible(False)
-        ax.spines["top"].set_visible(False)
-        ax.spines["bottom"].set_visible(False)
+        dpi = 100
+        plt.figure(dpi=dpi, figsize=(self.shape[0] / dpi, self.shape[1] / dpi))
+        plt.axis("off")
+        plt.imshow(self.frame_series.T, cmap=color_map, interpolation="none", origin="lower")
+        plt.subplots_adjust(left=0, right=1, bottom=0, top=1)
 
     def show_fig(
         self,
@@ -812,24 +842,18 @@ class FreqDomainFrameSeries(FrameSeries):
             up_to_nyquist (bool, optional): ナイキスト周波数までのプロットにするか
             color_map (str, optional): プロットに使用するカラーマップ
         """
-        fig, ax = plt.subplots(
-            dpi=100,
-            figsize=(self.shape[0] / 100, self.shape[1] / 100),
-        )
-
         if up_to_nyquist:
             show_data = self.frame_series[:, : self.shape[1] // 2 + 1]
         else:
             show_data = self.frame_series
 
-        ax.pcolor(show_data.T, cmap=color_map)
-        fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
-        ax.axes.xaxis.set_ticks([])
-        ax.axes.yaxis.set_ticks([])
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_visible(False)
-        ax.spines["top"].set_visible(False)
-        ax.spines["bottom"].set_visible(False)
+        dpi = 100
+        plt.figure(
+            dpi=dpi, figsize=(show_data.shape[0] / dpi, show_data.shape[1] / dpi)
+        )
+        plt.axis("off")
+        plt.imshow(show_data.T, cmap=color_map, interpolation="none", origin="lower")
+        plt.subplots_adjust(left=0, right=1, bottom=0, top=1)
 
     @override
     def show_fig(self, up_to_nyquist: bool = True, color_map: str = "magma") -> Self:
