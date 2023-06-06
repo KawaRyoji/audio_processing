@@ -45,6 +45,16 @@ class WavFile:
         """
         return self.__data
 
+    @property
+    def dtype(self) -> np.dtype:
+        """
+        音データのデータタイプ
+
+        Returns:
+            np.dtype: データタイプ
+        """
+        return self.__data.dtype
+
     @classmethod
     def read(
         cls, path: str, fs: Optional[int] = None, dtype: np.dtype = np.float32
@@ -83,7 +93,24 @@ class WavFile:
 
         return WavFile(resampled, target_fs, dtype=resampled.dtype)
 
-    def save(self, path: str, target_bits: int = 16, overwrite: bool = False) -> Self:
+    def normalize(self) -> Self:
+        """
+        音データをmin-max正規化し, 振幅を[0, 1]にします.
+
+        Returns:
+            Self: 正規化した音データのwavファイル
+        """
+        d_max = np.max(np.abs(self.data))
+
+        return WavFile(self.data / d_max, self.fs, dtype=self.dtype)
+
+    def save(
+        self,
+        path: str,
+        target_bits: int = 16,
+        normalize: bool = True,
+        overwrite: bool = False,
+    ) -> Self:
         """
         wavファイルに書き込みます.
         `overwrite`が`False`の場合かつすでにファイルが存在する場合上書きされません.
@@ -91,6 +118,7 @@ class WavFile:
         Args:
             path (str): 保存先のパス
             target_bits (int, optional): 書き込むbit数
+            normalize (bool, optional): 書き込む前に上書きするかどうか
             overwrite (bool, optional): 上書きを許可するかどうか
 
         Returns:
@@ -100,13 +128,18 @@ class WavFile:
             print(path, "は既に存在します")
             return self
 
+        data = self.normalize().data if normalize else self.data
+
         Path(path).parent.mkdir(exist_ok=True)
 
-        soundfile.write(path, self.data, self.fs, "PCM_{}".format(target_bits))
+        soundfile.write(path, data, self.fs, "PCM_{}".format(target_bits))
 
         return self
 
     def plot(self) -> None:
+        """
+        音データをプロットします.
+        """
         x = np.arange(self.data.shape[0]) / self.fs
         plt.plot(x, self.data)
         plt.xlabel("Time (s)", fontsize=16)
@@ -115,11 +148,26 @@ class WavFile:
         plt.tight_layout()
 
     def show_fig(self) -> Self:
+        """
+        音データをプロットしたものを表示します
+
+        Returns:
+            Self: 自身のインスタンス
+        """
         self.plot()
         plt.show()
         return self
 
     def save_as_fig(self, path: str) -> Self:
+        """
+        音データをプロットしたものを保存します.
+
+        Args:
+            path (str): 保存するパス
+
+        Returns:
+            Self: 自身のインスタンス
+        """
         self.plot()
         plt.savefig(path)
         plt.close()
