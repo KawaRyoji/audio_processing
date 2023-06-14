@@ -24,6 +24,7 @@ class FrameSeries:
         """
         Args:
             frame_series (np.ndarray): フレーム単位の系列(2次元を想定)
+            dtype (np.dtype): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
 
         Raises:
             ValueError: フレームの系列が2次元でない場合
@@ -158,7 +159,7 @@ class FrameSeries:
             )
         )
 
-    def average(self, axis: int = 0) -> np.ndarray:
+    def average_by_axis(self, axis: int = 0) -> np.ndarray:
         """
         軸`axis`に従って平均した系列を返します.
 
@@ -169,6 +170,15 @@ class FrameSeries:
             np.ndarray: 平均した系列
         """
         return self.reduce(lambda x, y: x + y, axis=axis) / self.shape[axis]
+
+    def global_average(self) -> float:
+        """
+        フレームの系列全体の平均を返します.
+
+        Returns:
+            float: 平均
+        """
+        return np.mean(self.frame_series)
 
     def trim_by_value(self, start: int, end: int) -> FrameSeries:
         """
@@ -388,7 +398,9 @@ class FrameSeries:
         dpi = 100
         plt.figure(dpi=dpi, figsize=(self.shape[0] / dpi, self.shape[1] / dpi))
         plt.axis("off")
-        plt.imshow(self.frame_series.T, cmap=color_map, interpolation="none", origin="lower")
+        plt.imshow(
+            self.frame_series.T, cmap=color_map, interpolation="none", origin="lower"
+        )
         plt.subplots_adjust(left=0, right=1, bottom=0, top=1)
 
     def show_fig(
@@ -555,6 +567,7 @@ class TimeDomainFrameSeries(FrameSeries):
         frame_length: int,
         frame_shift: int,
         fs: int,
+        dtype: Optional[np.dtype] = None,
     ) -> None:
         """
         Args:
@@ -562,8 +575,9 @@ class TimeDomainFrameSeries(FrameSeries):
             frame_length (int): フレーム長
             frame_shift (int): シフト長
             fs (int): サンプリング周波数
+            dtype (np.dtype): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
         """
-        super().__init__(frame_series)
+        super().__init__(frame_series, dtype=dtype)
         self.__frame_length = frame_length
         self.__frame_shift = frame_shift
         self.__fs = fs
@@ -654,6 +668,7 @@ class FreqDomainFrameSeries(FrameSeries):
         fs: int,
         dB: bool = False,
         power: bool = False,
+        dtype: Optional[np.dtype] = None,
     ) -> None:
         """
         Args:
@@ -664,8 +679,9 @@ class FreqDomainFrameSeries(FrameSeries):
             fs (int): サンプリング周波数
             dB (bool, optional): この系列がdB値であるか. Trueの場合, この系列はdB値であることを示します.
             power (bool, optional): この系列がパワーであるか. Trueの場合, この系列はパワー値であることを示します.
+            dtype (np.dtype): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
         """
-        super().__init__(frame_series)
+        super().__init__(frame_series, dtype=dtype)
         self.__frame_length = frame_length
         self.__frame_shift = frame_shift
         self.__fs = fs
@@ -817,7 +833,7 @@ class FreqDomainFrameSeries(FrameSeries):
     @staticmethod
     def to_symmetry(series: np.ndarray) -> np.ndarray:
         """
-        (time, fft_point // 2 + 1)の非対称スペクトログラムを対称にします.
+        (time, fft_point // 2 + 1) または (time, fft_point // 2)の非対称スペクトログラムを対称にします.
 
         Args:
             series (np.ndarray): 非対称スペクトログラム
@@ -825,7 +841,11 @@ class FreqDomainFrameSeries(FrameSeries):
         Returns:
             np.ndarray: 対称スペクトログラム (time, fft_point)
         """
-        return np.concatenate([series, np.fliplr(series)[:, 1:-1]], axis=1)
+        return (
+            np.concatenate([series, np.fliplr(series)], axis=1)
+            if series.shape[1] % 2 == 0
+            else np.concatenate([series, np.fliplr(series)[:, 1:-1]], axis=1)
+        )
 
     # 以下継承したメソッド
 

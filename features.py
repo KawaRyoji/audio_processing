@@ -366,17 +366,26 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
         Returns:
             MelSpectrum: メルスペクトル
         """
-        filter = librosa.filters.mel(
-            sr=self.fs, n_fft=self.fft_point, n_mels=bins, dtype=self.frame_series.dtype
+        if self.dB:
+            raise ValueError("この振幅スペクトルはメルスペクトルに変換できません.")
+
+        mel_spectrum = librosa.feature.melspectrogram(
+            S=self.frame_series[:, : self.shape[1] // 2 + 1].T,
+            sr=self.fs,
+            n_fft=self.fft_point,
+            hop_length=self.frame_shift,
+            win_length=self.frame_length,
+            power=2 if self.power else 1,
+            n_mels=bins,
         )
-        melspectrum = np.dot(self.frame_series[:, : self.shape[1] // 2 + 1].T, filter)
+
         return MelSpectrum(
-            FreqDomainFrameSeries.to_symmetry(melspectrum),
+            FreqDomainFrameSeries.to_symmetry(mel_spectrum.T),
             self.frame_length,
             self.frame_shift,
             self.fft_point,
             self.fs,
-            dB=self.dB,
+            dB=False,
             power=self.power,
         )
 
@@ -393,6 +402,37 @@ class MelSpectrum(FreqDomainFrameSeries):
     """
     メルスペクトルのフレームの系列を扱うクラスです.
     """
+
+    def to_spectrum(self) -> AmplitudeSpectrum:
+        """
+        メルスペクトルを振幅スペクトルに変換します.
+        
+
+        Raises:
+            ValueError: このメルスペクトルがdB値の場合
+
+        Returns:
+            AmplitudeSpectrum: 振幅スペクトル (time, fft_point)
+        """
+        if self.dB:
+            raise ValueError("このメルスペクトルはスペクトルに変換できません.")
+
+        spectrogram = librosa.feature.inverse.mel_to_stft(
+            self.frame_series[:, : self.shape[1] // 2 + 1].T,
+            sr=self.fs,
+            n_fft=self.fft_point,
+            power=2 if self.power else 1,
+        )
+        
+        return AmplitudeSpectrum(
+            AmplitudeSpectrum.to_symmetry(spectrogram.T),
+            self.frame_length,
+            self.frame_shift,
+            self.fft_point,
+            self.fs,
+            dB=False,
+            power=self.power,
+        )
 
     def to_mel_cepstrum(self) -> MelCepstrum:
         """
