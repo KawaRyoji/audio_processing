@@ -11,7 +11,7 @@ import soundfile
 from typing_extensions import Self
 
 if TYPE_CHECKING:
-    from audio_processing.features import WaveformFrameSeries
+    from audio_processing.features import WaveformFrameSeries, ComplexCQT
 
 
 class WavFile:
@@ -204,6 +204,35 @@ class WavFile:
             padding=padding,
             padding_mode=padding_mode,
             dtype=dtype,
+        )
+
+    def to_cqt(
+        self,
+        frame_shift: int,
+        fmin: float,
+        n_bins: int = 180,
+        bins_per_octave: int = 36,
+        window: str = "hann",
+    ) -> ComplexCQT:
+        from audio_processing.features import ComplexCQT
+
+        cqt = librosa.cqt(
+            self.data,
+            sr=self.fs,
+            hop_length=frame_shift,
+            fmin=fmin,
+            n_bins=n_bins,
+            bins_per_octave=bins_per_octave,
+            window=window,
+        )
+
+        return ComplexCQT(
+            np.fliplr(cqt.T),
+            frame_shift,
+            self.fs,
+            fmin,
+            bins_per_octave=bins_per_octave,
+            dtype=None,
         )
 
     def to_npz(

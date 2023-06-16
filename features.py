@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Optional, Tuple, Union
 
 import librosa
 import numpy as np
@@ -406,7 +406,7 @@ class MelSpectrum(FreqDomainFrameSeries):
     def to_spectrum(self) -> AmplitudeSpectrum:
         """
         メルスペクトルを振幅スペクトルに変換します.
-        
+
 
         Raises:
             ValueError: このメルスペクトルがdB値の場合
@@ -423,7 +423,7 @@ class MelSpectrum(FreqDomainFrameSeries):
             n_fft=self.fft_point,
             power=2 if self.power else 1,
         )
-        
+
         return AmplitudeSpectrum(
             AmplitudeSpectrum.to_symmetry(spectrogram.T),
             self.frame_length,
@@ -631,4 +631,376 @@ class MelCepstrum(TimeDomainFrameSeries):
             self.frame_length,
             self.frame_shift,
             self.fs,
+        )
+
+
+class ComplexCQT(FrameSeries):
+    """
+    複素CQTを扱うクラスです.
+    """
+
+    def __init__(
+        self,
+        frame_series: np.ndarray,
+        frame_shift: int,
+        fs: int,
+        fmin: float,
+        bins_per_octave: int = 36,
+        dtype: Optional[np.dtype] = None,
+    ) -> None:
+        """
+        Args:
+            frame_series (np.ndarray): フレーム単位の系列(Frames, CQT bins)
+            frame_shift (int): シフト長
+            fs (int): サンプリング周波数
+            fmin (float): CQT の最低周波数
+            dB (bool, optional): この系列がdB値であるか. Trueの場合, この系列はdB値であることを示します.
+            power (bool, optional): この系列がパワーであるか. Trueの場合, この系列はパワー値であることを示します.
+            dtype (np.dtype): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
+        """
+        super().__init__(frame_series, dtype=dtype)
+
+        self.__frame_shift = frame_shift
+        self.__fs = fs
+        self.__fmin = fmin
+        self.__bins_per_octave = bins_per_octave
+
+    @property
+    def frame_shift(self) -> int:
+        """
+        シフト長を返します.
+
+        Returns:
+            int: シフト長
+        """
+        return self.__frame_shift
+
+    @property
+    def fmin(self) -> float:
+        """
+        この系列を生成した最低周波数を返します.
+
+        Returns:
+            float: CQTの最低周波数
+        """
+        return self.__fmin
+
+    @property
+    def bins_per_octave(self) -> int:
+        """
+        この系列を生成した1オクターブ当たりのCQTビン数を返します
+
+        Returns:
+            int: 1オクターブ当たりのCQTビン数
+        """
+        return self.__bins_per_octave
+
+    @property
+    def fs(self) -> int:
+        """
+        この系列を生成したサンプリング周波数を返します.
+
+        Returns:
+            int: サンプリング周波数
+        """
+        return self.__fs
+
+    def to_wave(self) -> WavFile:
+        """
+        複素CQTから時間波形に変換します.
+
+        Returns:
+            WavFile: 変換した時間波形
+        """
+        from audio_processing.fileio import WavFile  # 循環参照対策
+
+        wave = librosa.icqt(
+            np.fliplr(self.frame_series).T,
+            sr=self.fs,
+            hop_length=self.frame_shift,
+            fmin=self.fmin,
+            bins_per_octave=self.bins_per_octave,
+        )
+
+        return WavFile(wave, self.fs, dtype=np.float32)
+
+    def to_amplitude(self) -> AmplitudeCQT:
+        """
+        複素CQTを振幅CQTに変換します.
+
+        Returns:
+            AmplitudeCQT: 振幅CQT
+        """
+        return AmplitudeCQT(
+            np.abs(self.frame_series),
+            self.frame_shift,
+            self.fs,
+            self.fmin,
+            bins_per_octave=self.bins_per_octave,
+            dB=False,
+            power=False,
+            dtype=np.float32,
+        )
+
+    @override
+    def properties(self) -> dict[str, Any]:
+        properties = super().properties()
+        properties.update(
+            {
+                "frame_shift": self.frame_shift,
+                "fs": self.fs,
+                "fmin": self.fmin,
+                "bins_per_octave": self.bins_per_octave,
+            }
+        )
+
+        return properties
+
+    @override
+    def copy_with(
+        self,
+        frame_series: Optional[np.ndarray] = None,
+        frame_shift: Optional[int] = None,
+        fs: Optional[int] = None,
+        fmin: Optional[float] = None,
+        bins_per_octave: Optional[int] = None,
+    ) -> Self:
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
+        fs = self.fs if fs is None else fs
+        fmin = self.fmin if fmin is None else fmin
+        bins_per_octave = (
+            self.bins_per_octave if bins_per_octave is None else bins_per_octave
+        )
+
+        return self.__class__(
+            frame_series,
+            frame_shift,
+            fs,
+            fmin,
+            bins_per_octave=bins_per_octave,
+        )
+
+
+class AmplitudeCQT(FrameSeries):
+    """
+    振幅CQTを扱うクラスです.
+    """
+
+    def __init__(
+        self,
+        frame_series: np.ndarray,
+        frame_shift: int,
+        fs: int,
+        fmin: float,
+        bins_per_octave: int = 36,
+        dB: bool = False,
+        power: bool = False,
+        dtype: Optional[np.dtype] = None,
+    ) -> None:
+        """
+        Args:
+            frame_series (np.ndarray): フレーム単位の系列(Frames, CQT bins)
+            frame_shift (int): シフト長
+            fs (int): サンプリング周波数
+            fmin (float): CQT の最低周波数
+            dB (bool, optional): この系列がdB値であるか. Trueの場合, この系列はdB値であることを示します.
+            power (bool, optional): この系列がパワーであるか. Trueの場合, この系列はパワー値であることを示します.
+            dtype (np.dtype): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
+        """
+        super().__init__(frame_series, dtype=dtype)
+
+        self.__frame_shift = frame_shift
+        self.__fs = fs
+        self.__fmin = fmin
+        self.__bins_per_octave = bins_per_octave
+        self.__dB = dB
+        self.__power = power
+
+    @property
+    def frame_shift(self) -> int:
+        """
+        シフト長を返します.
+
+        Returns:
+            int: シフト長
+        """
+        return self.__frame_shift
+
+    @property
+    def dB(self) -> bool:
+        """
+        この系列がdB値であるかを返します.
+        Trueの場合このフレームの系列はdB値です.
+
+        Returns:
+            bool: この系列がdB値であるかどうか.
+        """
+        return self.__dB
+
+    @property
+    def power(self) -> bool:
+        """
+        この系列がパワーであるかを返します.
+        Trueの場合このフレームの系列はパワー値です.
+
+        Returns:
+            bool: この系列がパワーであるかどうか.
+        """
+        return self.__power
+
+    @property
+    def fmin(self) -> float:
+        """
+        この系列を生成した最低周波数を返します.
+
+        Returns:
+            float: CQTの最低周波数
+        """
+        return self.__fmin
+
+    @property
+    def bins_per_octave(self) -> int:
+        """
+        この系列を生成した1オクターブ当たりのCQTビン数を返します
+
+        Returns:
+            int: 1オクターブ当たりのCQTビン数
+        """
+        return self.__bins_per_octave
+
+    @property
+    def fs(self) -> int:
+        """
+        この系列を生成したサンプリング周波数を返します.
+
+        Returns:
+            int: サンプリング周波数
+        """
+        return self.__fs
+
+    def linear_to_dB(self) -> Self:
+        """
+        このフレームの系列をdB値に変換します.
+        すでにdB値である場合は変換せずそのまま返します.
+
+        Returns:
+            Self: dB値に変換されたフレームの系列
+        """
+        if self.dB:
+            print("この特徴量はすでにdB値です.")
+            return self
+
+        if self.power:
+            dB_func = lambda frame: 10 * np.log10(
+                frame, out=np.zeros_like(frame), where=frame != 0
+            )
+        else:
+            dB_func = lambda frame: 20 * np.log10(
+                frame, out=np.zeros_like(frame), where=frame != 0
+            )
+
+        return self.copy_with(frame_series=dB_func(self.frame_series), dB=True)
+
+    def dB_to_linear(self) -> Self:
+        """
+        このフレームの系列をdB値からリニアに変換します.
+        すでにリニアである場合は変換せずそのまま返します.
+        元の系列がパワー値だった場合, パワー値として返されます.
+
+        Returns:
+            Self: リニアに変換されたフレームの系列. 元の系列がパワー値だった場合パワーの系列
+        """
+
+        if not self.dB:
+            print("この特徴量はすでに線形値です.")
+            return self
+
+        if self.power:
+            linear_func = lambda x: np.power(10, x / 10)
+        else:
+            linear_func = lambda x: np.power(10, x / 20)
+
+        return self.copy_with(frame_series=linear_func(self.frame_series), dB=False)
+
+    def linear_to_power(self) -> Self:
+        """
+        このフレームの系列をパワーに変換します.
+        すでにパワーである場合またはdB値である場合は変換せずそのまま返します.
+
+        Returns:
+            Self: パワーに変換されたフレームの系列
+        """
+        if self.power:
+            print("この特徴量はすでにパワー値です.")
+            return self
+        elif self.dB:
+            print("この特徴量はdB値です.")
+            return self
+
+        return self.copy_with(frame_series=np.power(self.frame_series, 2), power=True)
+
+    def power_to_linear(self) -> Self:
+        """
+        このフレームの系列をパワーからリニアに変換します.
+        すでにリニアである場合またはdB値の場合は変換せずそのまま返します.
+
+        Returns:
+            Self: リニアに変換されたフレームの系列
+        """
+
+        if not self.power:
+            print("この特徴量はすでに線形値です.")
+            return self
+        elif self.dB:
+            print("この特徴量はdB値です.")
+            return self
+
+        return self.copy_with(frame_series=np.sqrt(self.frame_series), power=False)
+
+    @override
+    def properties(self) -> dict[str, Any]:
+        properties = super().properties()
+        properties.update(
+            {
+                "frame_shift": self.frame_shift,
+                "fs": self.fs,
+                "fmin": self.fmin,
+                "bins_per_octave": self.bins_per_octave,
+                "dB": self.dB,
+                "power": self.power,
+            }
+        )
+
+        return properties
+
+    @override
+    def copy_with(
+        self,
+        frame_series: Optional[np.ndarray] = None,
+        frame_shift: Optional[int] = None,
+        fs: Optional[int] = None,
+        fmin: Optional[float] = None,
+        bins_per_octave: Optional[int] = None,
+        dB: Optional[bool] = None,
+        power: Optional[bool] = None,
+    ) -> Self:
+        frame_series = self.frame_series if frame_series is None else frame_series
+        frame_shift = self.frame_shift if frame_shift is None else frame_shift
+        fs = self.fs if fs is None else fs
+        fmin = self.fmin if fmin is None else fmin
+        bins_per_octave = (
+            self.bins_per_octave if bins_per_octave is None else bins_per_octave
+        )
+        dB = self.dB if dB is None else dB
+        power = self.power if power is None else power
+
+        return self.__class__(
+            frame_series,
+            frame_shift,
+            fs,
+            fmin,
+            bins_per_octave=bins_per_octave,
+            dB=dB,
+            power=power,
         )
