@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import inspect
 import os
+import re
 from functools import reduce
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
@@ -13,7 +15,7 @@ from typing_extensions import Self, override
 class FrameSeries:
     """
     フレーム単位の情報を扱うクラスです.
-    継承して新しいプロパティを追加する場合, `copy_with()`と`properties()`を適切にオーバーライドしてください.
+    継承して新しいプロパティを追加する場合, `copy_with()`を適切にオーバーライドしてください.
     """
 
     def __init__(
@@ -65,25 +67,6 @@ class FrameSeries:
             np.dtype: データタイプ
         """
         return self.__frame_series.dtype
-
-    @classmethod
-    def edge_point(
-        cls, index: int, frame_length: int, frame_shift: int
-    ) -> Tuple[int, int]:
-        """
-        `index`番目のフレームの両端のサンプル数を返します.
-
-        Args:
-            index (int): フレーム番号
-            frame_length (int): フレーム長
-            frame_shift (int): シフト長
-
-        Returns:
-            Tuple[int, int]: フレームの両端のサンプル数
-        """
-        start = index * frame_shift
-        end = start + frame_length
-        return start, end
 
     def to_patches(self, frames: int) -> np.ndarray:
         """
@@ -325,7 +308,29 @@ class FrameSeries:
         Returns:
             dict[str, Any]: プロパティの辞書
         """
-        return {}
+
+        bases = list(
+            map(
+                lambda cls: "_" + cls.__name__,
+                filter(
+                    lambda cls: cls is not object,
+                    inspect.getmro(self.__class__),
+                ),
+            )
+        )
+
+        return dict(
+            map(
+                lambda e: (
+                    re.sub("(" + "|".join(bases + ["__"]) + ")", "", e[0]),
+                    e[1],
+                ),
+                filter(
+                    lambda e: not "__frame_series" in e[0],
+                    self.__dict__.items(),
+                ),
+            ),
+        )
 
     def save(self, path: str, compress: bool = False, overwrite: bool = False) -> Self:
         """
@@ -640,18 +645,6 @@ class TimeDomainFrameSeries(FrameSeries):
 
         return self.__class__(frame_series, frame_length, frame_shift, fs)
 
-    @override
-    def properties(self) -> dict[str, Any]:
-        properties = super().properties()
-        properties.update(
-            {
-                "frame_length": self.frame_length,
-                "frame_shift": self.frame_shift,
-                "fs": self.fs,
-            }
-        )
-        return properties
-
 
 class FreqDomainFrameSeries(FrameSeries):
     """
@@ -830,23 +823,6 @@ class FreqDomainFrameSeries(FrameSeries):
 
         return self.copy_with(frame_series=np.sqrt(self.frame_series), power=False)
 
-    @staticmethod
-    def to_symmetry(series: np.ndarray) -> np.ndarray:
-        """
-        (time, fft_point // 2 + 1) または (time, fft_point // 2)の非対称スペクトログラムを対称にします.
-
-        Args:
-            series (np.ndarray): 非対称スペクトログラム
-
-        Returns:
-            np.ndarray: 対称スペクトログラム (time, fft_point)
-        """
-        return (
-            np.concatenate([series, np.fliplr(series)], axis=1)
-            if series.shape[1] % 2 == 0
-            else np.concatenate([series, np.fliplr(series)[:, 1:-1]], axis=1)
-        )
-
     # 以下継承したメソッド
 
     @override
@@ -909,21 +885,6 @@ class FreqDomainFrameSeries(FrameSeries):
         plt.savefig(path)
         plt.close()
         return self
-
-    @override
-    def properties(self) -> dict[str, Any]:
-        properties = super().properties()
-        properties.update(
-            {
-                "frame_length": self.frame_length,
-                "frame_shift": self.frame_shift,
-                "fs": self.fs,
-                "fft_point": self.fft_point,
-                "dB": self.dB,
-                "power": self.power,
-            }
-        )
-        return properties
 
     @override
     def copy_with(

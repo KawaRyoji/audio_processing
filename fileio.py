@@ -11,10 +11,10 @@ import soundfile
 from typing_extensions import Self
 
 if TYPE_CHECKING:
-    from audio_processing.features import WaveformFrameSeries, ComplexCQT
+    from audio_processing.features import ComplexCQT, WaveformFrameSeries
 
 
-class WavFile:
+class AudioFile:
     def __init__(self, data: np.ndarray, fs: int, dtype: np.dtype = np.float32) -> None:
         """
         Args:
@@ -41,7 +41,7 @@ class WavFile:
     @property
     def data(self) -> np.ndarray:
         """
-        wavファイルのデータ
+        オーディオファイルのデータ
         """
         return self.__data
 
@@ -58,17 +58,17 @@ class WavFile:
     @classmethod
     def read(
         cls, path: str, fs: Optional[int] = None, dtype: np.dtype = np.float32
-    ) -> "WavFile":
+    ) -> Self:
         """
-        wavファイルからインスタンスを生成します.
+        オーディオファイルからインスタンスを生成します. 対応しているフォーマットは`librosa.core.load`を確認してください.
 
         Args:
-            path (str): wavファイルパス
-            fs (Optional[int], optional): サンプリング周波数. Noneの場合読み込んだwavファイルのサンプリング周波数になります
+            path (str): オーディオファイルパス
+            fs (Optional[int], optional): サンプリング周波数. Noneの場合読み込んだオーディオファイルのサンプリング周波数になります
             dtype (np.dtype, optional): データタイプ
 
         Returns:
-            WavFile: 生成したインスタンス
+            AudioFile: 生成したインスタンス
         """
         data, fs = librosa.core.load(path, sr=fs)
         return cls(data, fs, dtype=dtype)
@@ -82,7 +82,7 @@ class WavFile:
             target_fs (int): 目標のサンプリング周波数
 
         Returns:
-            WavFile: サンプリング周波数を変換したインスタンス
+            AudioFile: サンプリング周波数を変換したインスタンス
         """
         if self.fs == target_fs:
             return self
@@ -91,18 +91,18 @@ class WavFile:
             y=self.data, orig_sr=self.fs, target_sr=target_fs
         )
 
-        return WavFile(resampled, target_fs, dtype=resampled.dtype)
+        return AudioFile(resampled, target_fs, dtype=resampled.dtype)
 
     def normalize(self) -> Self:
         """
         音データをmin-max正規化し, 振幅を[0, 1]にします.
 
         Returns:
-            Self: 正規化した音データのwavファイル
+            Self: 正規化した音データのオーディオファイル
         """
         d_max = np.max(np.abs(self.data))
 
-        return WavFile(self.data / d_max, self.fs, dtype=self.dtype)
+        return AudioFile(self.data / d_max, self.fs, dtype=self.dtype)
 
     def save(
         self,
@@ -112,8 +112,9 @@ class WavFile:
         overwrite: bool = False,
     ) -> Self:
         """
-        wavファイルに書き込みます.
+        オーディオファイルに書き込みます.
         `overwrite`が`False`の場合かつすでにファイルが存在する場合上書きされません.
+        対応しているフォーマットは`soundfile.write`を確認してください.
 
         Args:
             path (str): 保存先のパス
@@ -122,7 +123,7 @@ class WavFile:
             overwrite (bool, optional): 上書きを許可するかどうか
 
         Returns:
-            WavFile: 自身のインスタンス
+            AudioFile: 自身のインスタンス
         """
         if not overwrite and os.path.exists(path):
             print(path, "は既に存在します")
@@ -227,7 +228,7 @@ class WavFile:
         )
 
         return ComplexCQT(
-            np.fliplr(cqt.T),
+            cqt.T,
             frame_shift,
             self.fs,
             fmin,
@@ -248,7 +249,7 @@ class WavFile:
             overwrite (bool, optional): 上書きを許可するかどうか
 
         Returns:
-            WavFile: 自身のインスタンス
+            AudioFile: 自身のインスタンス
         """
         if not overwrite and os.path.exists(path):
             print(path, "は既に存在します")
@@ -264,7 +265,7 @@ class WavFile:
         return self
 
     @classmethod
-    def from_npz(cls, path: str) -> WavFile:
+    def from_npz(cls, path: str) -> AudioFile:
         """
         npzファイルからインスタンスを生成します.
 
@@ -272,7 +273,7 @@ class WavFile:
             path (str): npzファイルのパス
 
         Returns:
-            WavFile: 生成したインスタンス
+            AudioFile: 生成したインスタンス
         """
         file = np.load(path, allow_pickle=True)
         data: np.ndarray = file["data"]

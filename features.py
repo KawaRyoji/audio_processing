@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 import librosa
 import numpy as np
@@ -12,9 +12,10 @@ from audio_processing.base import (
     FreqDomainFrameSeries,
     TimeDomainFrameSeries,
 )
+from audio_processing.utils import edge_point, to_symmetry
 
 if TYPE_CHECKING:
-    from audio_processing.fileio import WavFile
+    from audio_processing.fileio import AudioFile
 
 
 class WaveformFrameSeries(TimeDomainFrameSeries):
@@ -55,7 +56,7 @@ class WaveformFrameSeries(TimeDomainFrameSeries):
         num_frame = 1 + (len(waveform) - frame_length) // frame_shift
         frames = np.array(
             [
-                waveform[slice(*cls.edge_point(i, frame_length, frame_shift))]
+                waveform[slice(*edge_point(i, frame_length, frame_shift))]
                 for i in range(num_frame)
             ],
             dtype=dtype,
@@ -100,14 +101,14 @@ class WaveformFrameSeries(TimeDomainFrameSeries):
             self.fs,
         )
 
-    def to_wav_file(self) -> WavFile:
+    def to_wav_file(self) -> AudioFile:
         """
-        フレームの系列の時間波形を1次元の時間波形に再構成し, WavFileに変換します.
+        フレームの系列の時間波形を1次元の時間波形に再構成し, AudioFileに変換します.
 
         Returns:
-            WavFile: 再構成した時間波形のWavFile
+            AudioFile: 再構成した時間波形のAudioFile
         """
-        from audio_processing.fileio import WavFile  # 循環参照対策
+        from audio_processing.fileio import AudioFile  # 循環参照対策
 
         # TODO: 高速化
         # x = [[0,1,2],[3,4,5],[6,7,8]], シフト長1の場合
@@ -120,7 +121,7 @@ class WaveformFrameSeries(TimeDomainFrameSeries):
         # [0,0,6,7,8] = :上([0,4,6,5])の要素数(4) + シフト長(1) - 自身の要素数(3)分左にゼロを埋める
         # [0,4,12,12,8] :解
         # istftでやっていることと同じ
-        return WavFile(
+        return AudioFile(
             data=self.reduce(
                 lambda x, y: np.pad(x, (0, self.frame_shift))
                 + np.pad(y, (len(x) + self.frame_shift - len(y), 0)),
@@ -203,15 +204,26 @@ class Spectrum(FreqDomainFrameSeries):
             self.frame_shift,
         )
 
-    def to_waveform(self) -> WaveformFrameSeries:
+    def to_waveform(
+        self, window: Union[str, np.ndarray, None] = "hann"
+    ) -> WaveformFrameSeries:
         """
         スペクトルを時間波形に変換します.
 
         Returns:
             Waveform: 変換した時間波形
         """
+        if window is None:
+            window_func = np.ones(self.frame_length)
+        elif type(window) is str:
+            window_func = get_window(window, self.frame_length)
+        elif type(window) is np.ndarray:
+            window_func = window
+        else:
+            raise TypeError("窓関数はstrもしくはnp.ndarrayでなければいけません.")
+
         return WaveformFrameSeries(
-            np.fft.ifft(self.frame_series).real,
+            np.fft.ifft(self.frame_series).real / window_func,
             self.frame_length,
             self.frame_shift,
             self.fs,
@@ -298,27 +310,40 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
     振幅スペクトルのフレームの系列を扱うクラスです.
     """
 
-    def to_wav_file(self, iterations: int = 20) -> WavFile:
+    def to_audio_file(
+        self, iterations: int = 20, window: Union[str, np.ndarray, None] = "hann"
+    ) -> AudioFile:
         """
         振幅スペクトルから位相復元をしてwavファイルを生成します.
         位相復元アルゴリズムはlibrosaのgiriffinlimを使用します.
 
         Args:
+            window (Union[str, np.ndarray, None] = "None")
             iterations (int, optional): griffinlimアルゴリズムの反復回数
 
         Returns:
-            WavFile: 位相復元したスペクトルから生成したwavファイル
+            AudioFile: 位相復元したスペクトルから生成したwavファイル
         """
-        from audio_processing.fileio import WavFile  # 循環参照対策
+        from audio_processing.fileio import AudioFile  # 循環参照対策
 
         if self.dB:
             print("振幅スペクトルを線形値に変換してください.")
 
-        return WavFile(
+        if window is None:
+            window_func = np.ones(self.frame_length)
+        elif type(window) is str:
+            window_func = get_window(window, self.frame_length)
+        elif type(window) is np.ndarray:
+            window_func = window
+        else:
+            raise TypeError("窓関数はstrもしくはnp.ndarrayでなければいけません.")
+
+        return AudioFile(
             data=librosa.griffinlim(
                 self.frame_series.T[: self.fft_point // 2 + 1, :],
                 hop_length=self.frame_shift,
                 win_length=self.frame_length,
+                window=window_func,
                 n_fft=self.fft_point,
                 n_iter=iterations,
             ),
@@ -380,7 +405,7 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
         )
 
         return MelSpectrum(
-            FreqDomainFrameSeries.to_symmetry(mel_spectrum.T),
+            to_symmetry(mel_spectrum.T),
             self.frame_length,
             self.frame_shift,
             self.fft_point,
@@ -425,7 +450,7 @@ class MelSpectrum(FreqDomainFrameSeries):
         )
 
         return AmplitudeSpectrum(
-            AmplitudeSpectrum.to_symmetry(spectrogram.T),
+            to_symmetry(spectrogram.T),
             self.frame_length,
             self.frame_shift,
             self.fft_point,
@@ -548,7 +573,7 @@ class Cepstrum(TimeDomainFrameSeries):
 
         # NOTE: 処理時間がかなりかかる
         return MelCepstrum(
-            FreqDomainFrameSeries.to_symmetry(mel_cepstrum),
+            to_symmetry(mel_cepstrum),
             self.frame_length,
             self.frame_shift,
             self.fs,
@@ -627,7 +652,7 @@ class MelCepstrum(TimeDomainFrameSeries):
         )
 
         return Cepstrum(
-            FreqDomainFrameSeries.to_symmetry(cepstrum),
+            to_symmetry(cepstrum),
             self.frame_length,
             self.frame_shift,
             self.fs,
@@ -705,24 +730,24 @@ class ComplexCQT(FrameSeries):
         """
         return self.__fs
 
-    def to_wave(self) -> WavFile:
+    def to_audio(self) -> AudioFile:
         """
         複素CQTから時間波形に変換します.
 
         Returns:
-            WavFile: 変換した時間波形
+            AudioFile: 変換した時間波形
         """
-        from audio_processing.fileio import WavFile  # 循環参照対策
+        from audio_processing.fileio import AudioFile  # 循環参照対策
 
-        wave = librosa.icqt(
-            np.fliplr(self.frame_series).T,
+        audio = librosa.icqt(
+            self.frame_series.T,
             sr=self.fs,
             hop_length=self.frame_shift,
             fmin=self.fmin,
             bins_per_octave=self.bins_per_octave,
         )
 
-        return WavFile(wave, self.fs, dtype=np.float32)
+        return AudioFile(audio, self.fs, dtype=np.float32)
 
     def to_amplitude(self) -> AmplitudeCQT:
         """
@@ -741,20 +766,6 @@ class ComplexCQT(FrameSeries):
             power=False,
             dtype=np.float32,
         )
-
-    @override
-    def properties(self) -> dict[str, Any]:
-        properties = super().properties()
-        properties.update(
-            {
-                "frame_shift": self.frame_shift,
-                "fs": self.fs,
-                "fmin": self.fmin,
-                "bins_per_octave": self.bins_per_octave,
-            }
-        )
-
-        return properties
 
     @override
     def copy_with(
@@ -879,6 +890,27 @@ class AmplitudeCQT(FrameSeries):
         """
         return self.__fs
 
+    def to_audio(self, iterations: int = 16) -> AudioFile:
+        """
+        振幅CQTから時間波形に変換します. 位相情報はgriffinlimで計算されます.
+        位相を使う場合`ComplexCQT`を使用してください.
+
+        Returns:
+            AudioFile: 変換した時間波形
+        """
+        from audio_processing.fileio import AudioFile  # 循環参照対策
+
+        audio = librosa.griffinlim_cqt(
+            self.frame_series.T,
+            n_iter=iterations,
+            sr=self.fs,
+            hop_length=self.frame_shift,
+            fmin=self.fmin,
+            bins_per_octave=self.bins_per_octave,
+        )
+
+        return AudioFile(audio, self.fs, dtype=np.float32)
+
     def linear_to_dB(self) -> Self:
         """
         このフレームの系列をdB値に変換します.
@@ -957,22 +989,6 @@ class AmplitudeCQT(FrameSeries):
             return self
 
         return self.copy_with(frame_series=np.sqrt(self.frame_series), power=False)
-
-    @override
-    def properties(self) -> dict[str, Any]:
-        properties = super().properties()
-        properties.update(
-            {
-                "frame_shift": self.frame_shift,
-                "fs": self.fs,
-                "fmin": self.fmin,
-                "bins_per_octave": self.bins_per_octave,
-                "dB": self.dB,
-                "power": self.power,
-            }
-        )
-
-        return properties
 
     @override
     def copy_with(
