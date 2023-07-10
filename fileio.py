@@ -11,7 +11,7 @@ import soundfile
 from typing_extensions import Self
 
 if TYPE_CHECKING:
-    from audio_processing.features import ComplexCQT, WaveformFrameSeries
+    from .features import ComplexCQT, WaveformFrameSeries
 
 
 class AudioFile:

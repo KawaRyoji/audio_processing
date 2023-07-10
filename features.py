@@ -7,15 +7,15 @@ import numpy as np
 from scipy.signal.windows import get_window
 from typing_extensions import Self, override
 
-from audio_processing.base import (
+from .base import (
     FrameSeries,
     FreqDomainFrameSeries,
     TimeDomainFrameSeries,
 )
-from audio_processing.utils import edge_point, to_symmetry
+from .utils import edge_point, to_symmetry
 
 if TYPE_CHECKING:
-    from audio_processing.fileio import AudioFile
+    from .fileio import AudioFile
 
 
 class WaveformFrameSeries(TimeDomainFrameSeries):
