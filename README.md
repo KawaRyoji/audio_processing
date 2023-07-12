@@ -20,10 +20,10 @@
 #### wavファイルのデータの読み込みからdB値の振幅スペクトルを得る
 
 ```python
-from audio_processing.fileio import WavFile
+from audio_processing import AudioFile
 
 amp_spectrum_dB = (
-    WavFile.read("path/to/wav/file.wav") # wavファイルを読み込む
+    AudioFile.read("path/to/wav/file.wav") # wavファイルを読み込む
     .to_frames(frame_length=1024, frame_shift=256) # 時間波形をフレーム系列に変換する
     .to_spectrum() # スペクトルに変換
     .to_amplitude() # 振幅スペクトルに変換
@@ -35,13 +35,13 @@ amp_spectrum_dB = (
 
 ```python
 amp_spectrum_dB = (
-    WavFile.read("path/to/wav/file.wav")
+    AudioFile.read("path/to/audio/file.wav")
     .to_frames(frame_length=1024, frame_shift=256)
     .to_spectrum()
-    .dump() # 出力1
+    .dump()
     .to_amplitude()
     .linear_to_dB()
-    .dump() # 出力2
+    .dump()
 )
 ```
 
@@ -51,7 +51,8 @@ amp_spectrum_dB = (
 Feature Summary
 ------------------------------------
 type: Spectrum
-data shape: (2048, 1024)
+data shape: (2000, 1024)
+data type: complex128
 frame_length: 1024
 frame_shift: 256
 fs: 16000
@@ -67,7 +68,8 @@ power: False
 Feature Summary
 ------------------------------------
 type: AmplitudeSpectrum
-data shape: (2048, 1024)
+data shape: (2000, 1024)
+data type: float64
 frame_length: 1024
 frame_shift: 256
 fs: 16000
