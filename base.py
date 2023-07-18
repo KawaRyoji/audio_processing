@@ -5,11 +5,15 @@ import os
 import re
 from functools import reduce
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Iterator, Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 from typing_extensions import Self, override
+
+
+class CannotCalcError(Exception):
+    pass
 
 
 class FrameSeries:
@@ -39,12 +43,12 @@ class FrameSeries:
         )
 
     @property
-    def shape(self) -> Tuple:
+    def shape(self) -> tuple[int, ...]:
         """
         フレームの系列の形状を返します.
 
         Returns:
-            Tuple: フレームの系列の形状
+            tuple: フレームの系列の形状
         """
         return self.__frame_series.shape
 
@@ -193,14 +197,14 @@ class FrameSeries:
         return self.copy_with(frame_series=self.frame_series[start:end, :])
 
     def pad_by_value(
-        self, pad_width: Tuple[int, int], mode: str = "constant"
+        self, pad_width: tuple[int, int], mode: str = "constant"
     ) -> FrameSeries:
         """
         値軸でフレームの系列をパディングします.
         この操作は特徴量によっては不整合を起こす可能性があるため, 元の暮らすには戻らず全てFrameSeriesになります.
 
         Args:
-            pad_width (Tuple[int, int]): パディングの長さ
+            pad_width (tuple[int, int]): パディングの長さ
             mode (str): パディングの方法 デフォルトでは0埋めされます
 
         Returns:
@@ -213,12 +217,12 @@ class FrameSeries:
             dtype=self.dtype,
         )
 
-    def pad_by_time(self, pad_width: Tuple[int, int], mode: str = "constant") -> Self:
+    def pad_by_time(self, pad_width: tuple[int, int], mode: str = "constant") -> Self:
         """
         時間軸でフレームの系列をパディングします.
 
         Args:
-            pad_width (Tuple[int, int]): パディングの長さ
+            pad_width (tuple[int, int]): パディングの長さ
             mode (str): パディングの方法 デフォルトでは0埋めされます
 
         Returns:
@@ -443,7 +447,7 @@ class FrameSeries:
 
     def plot_with(
         self,
-        plot_func: Callable[[np.ndarray, Tuple[Any, ...], Dict[str, Any]], None],
+        plot_func: Callable[[np.ndarray, tuple[Any, ...], dict[str, Any]], None],
         path: str,
         *args: Any,
         **kwargs: Any,
@@ -453,7 +457,7 @@ class FrameSeries:
         プロット関数に渡されるのは, 横軸が時間, 縦軸が系列の値の配列です.
 
         Args:
-            plot_func (Callable[[np.ndarray, Dict[str, Any]], None]): プロットする関数. 第一引数に系列の配列が渡されます. args, kwargsで任意の引数を渡せます.
+            plot_func (Callable[[np.ndarray, dict[str, Any]], None]): プロットする関数. 第一引数に系列の配列が渡されます. args, kwargsで任意の引数を渡せます.
             path (str): 保存するパス.
 
         Returns:
@@ -503,49 +507,104 @@ class FrameSeries:
         print(self.__str__())
         return self
 
-    def check_can_calc(self, other: Any) -> None:
+    def __can_calc(self, other: FrameSeries) -> bool:
         """
-        2項演算が行えるかを確認し, できない場合はエラーを出します.
+        2項演算が行えるかをbool値で返します
 
         Args:
-            other (Any): 確認するインスタンス
+            other (FrameSeries): 確認するインスタンス
 
-        Raises:
-            TypeError: 確認するインスタンスのクラスが自身のインスタンスと一致しない場合
-            ValueError: 確認するインスタンスのプロパティが自身のインスタンスと一致しない場合
+        Returns:
+            bool: 2項演算が行えるかどうか
         """
-        if not isinstance(other, self.__class__):
-            raise TypeError(
-                "2項演算の引数は同じクラスである必要があります. self:{} other:{}".format(
-                    self.__class__.__name__, other.__class__.__name__
-                )
-            )
 
-        if not self.same_property(other):
-            raise ValueError(
-                "同じプロパティで生成したインスタンス同士でしか演算できません. self:{} other:{}".format(
-                    self.properties(), other.properties()
-                )
-            )
+        return isinstance(other, self.__class__) and self.same_property(other)
 
     def __len__(self) -> int:
         return self.frame_series.__len__()
 
     def __add__(self, other: Any) -> Self:
-        self.check_can_calc(other)
-        return self.copy_with(frame_series=self.frame_series + other.frame_series)
+        if isinstance(other, FrameSeries):
+            if self.__can_calc(other):
+                return self.copy_with(
+                    frame_series=self.frame_series + other.frame_series
+                )
+            else:
+                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+
+        return self.copy_with(frame_series=self.frame_series + other)
 
     def __sub__(self, other: Any) -> Self:
-        self.check_can_calc(other)
-        return self.copy_with(frame_series=self.frame_series - other.frame_series)
+        if isinstance(other, FrameSeries):
+            if self.__can_calc(other):
+                return self.copy_with(
+                    frame_series=self.frame_series - other.frame_series
+                )
+            else:
+                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+
+        return self.copy_with(frame_series=self.frame_series - other)
 
     def __mul__(self, other: Any) -> Self:
-        self.check_can_calc(other)
-        return self.copy_with(frame_series=self.frame_series * other.frame_series)
+        if isinstance(other, FrameSeries):
+            if self.__can_calc(other):
+                return self.copy_with(
+                    frame_series=self.frame_series * other.frame_series
+                )
+            else:
+                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+
+        return self.copy_with(frame_series=self.frame_series * other)
 
     def __truediv__(self, other: Any) -> Self:
-        self.check_can_calc(other)
-        return self.copy_with(frame_series=self.frame_series / other.frame_series)
+        if isinstance(other, FrameSeries):
+            if self.__can_calc(other):
+                return self.copy_with(
+                    frame_series=self.frame_series / other.frame_series
+                )
+            else:
+                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+
+        return self.copy_with(frame_series=self.frame_series / other)
+
+    def __getitem__(self, key: Any) -> Union[np.ndarray, np.number]:
+        return self.frame_series.__getitem__(key)
+
+    def __iter__(self) -> Iterator[np.ndarray]:
+        return self.frame_series.__iter__()
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, self.__class__):
+            raise TypeError(
+                "{} と {} は比較できません.".format(
+                    self.__class__.__name__, other.__class__.__name__
+                )
+            )
+
+        return self.same_property(other) and np.array_equal(
+            other.frame_series, self.frame_series
+        )
+
+    def __ne__(self, other: Any) -> bool:
+        if not isinstance(other, self.__class__):
+            raise TypeError(
+                "{} と {} は比較できません.".format(
+                    self.__class__.__name__, other.__class__.__name__
+                )
+            )
+
+        return not self.same_property(other) or not np.array_equal(
+            other.frame_series, self.frame_series
+        )
+
+    def __lt__(self, other: Any) -> np.ndarray:
+        return self.frame_series.__lt__(other)
+
+    def __gt__(self, other: Any) -> np.ndarray:
+        return self.frame_series.__gt__(other)
+
+    def __repr__(self) -> str:
+        return self.frame_series.__repr__()
 
     def __str__(self) -> str:
         string = "Feature Summary\n"

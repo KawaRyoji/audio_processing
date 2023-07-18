@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import librosa
 import numpy as np
@@ -198,11 +198,7 @@ class Spectrum(FreqDomainFrameSeries):
         Returns:
             PhaseSpectrum: 位相スペクトル
         """
-        return PhaseSpectrum(
-            np.angle(self.frame_series),
-            self.frame_length,
-            self.frame_shift,
-        )
+        return PhaseSpectrum(np.angle(self.frame_series))
 
     def to_waveform(
         self, window: Union[str, np.ndarray, None] = "hann"
@@ -229,12 +225,12 @@ class Spectrum(FreqDomainFrameSeries):
             self.fs,
         )
 
-    def decompose(self) -> Tuple[AmplitudeSpectrum, PhaseSpectrum]:
+    def decompose(self) -> tuple[AmplitudeSpectrum, PhaseSpectrum]:
         """
         スペクトルを振幅スペクトルと位相スペクトルに分解します.
 
         Returns:
-            Tuple[AmplitudeSpectrum, PhaseSpectrum]: 振幅スペクトルと位相スペクトル
+            tuple[AmplitudeSpectrum, PhaseSpectrum]: 振幅スペクトルと位相スペクトル
         """
         return self.to_amplitude(), self.to_phase()
 
@@ -529,6 +525,13 @@ class Cepstrum(TimeDomainFrameSeries):
             Cepstrum: リフタリングされたケプストラム
         """
         if high_quefrency:
+            liftered = np.pad(
+                self.frame_series[:, order:-order],
+                ((0, 0), (order, order)),
+                "constant",
+                constant_values=0,
+            )
+        else:
             pad = np.zeros(
                 (self.shape[0], self.shape[1] - 2 * order),
                 dtype=self.frame_series.dtype,
@@ -536,13 +539,6 @@ class Cepstrum(TimeDomainFrameSeries):
             liftered = np.concatenate(
                 (self.frame_series[:, :order], pad, self.frame_series[:, -order:]),
                 axis=1,
-            )
-        else:
-            liftered = np.pad(
-                self.frame_series[:, order:-order],
-                ((0, 0), (order, order)),
-                "constant",
-                constant_values=0,
             )
 
         return Cepstrum(
