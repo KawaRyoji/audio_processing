@@ -7,15 +7,11 @@ import numpy as np
 from scipy.signal.windows import get_window
 from typing_extensions import Self, override
 
-from .base import (
-    FrameSeries,
-    FreqDomainFrameSeries,
-    TimeDomainFrameSeries,
-)
+from .core import FrameSeries, FreqDomainFrameSeries, TimeDomainFrameSeries
 from .utils import edge_point, to_symmetry
 
 if TYPE_CHECKING:
-    from .fileio import AudioFile
+    from .core import Audio
 
 
 class WaveformFrameSeries(TimeDomainFrameSeries):
@@ -101,14 +97,14 @@ class WaveformFrameSeries(TimeDomainFrameSeries):
             self.fs,
         )
 
-    def to_wav_file(self) -> AudioFile:
+    def to_wav_file(self) -> Audio:
         """
-        フレームの系列の時間波形を1次元の時間波形に再構成し, AudioFileに変換します.
+        フレームの系列の時間波形を1次元の時間波形に再構成し, Audioに変換します.
 
         Returns:
-            AudioFile: 再構成した時間波形のAudioFile
+            Audio: 再構成した時間波形のAudio
         """
-        from audio_processing.fileio import AudioFile  # 循環参照対策
+        from .core import Audio  # 循環参照対策
 
         # TODO: 高速化
         # x = [[0,1,2],[3,4,5],[6,7,8]], シフト長1の場合
@@ -121,7 +117,7 @@ class WaveformFrameSeries(TimeDomainFrameSeries):
         # [0,0,6,7,8] = :上([0,4,6,5])の要素数(4) + シフト長(1) - 自身の要素数(3)分左にゼロを埋める
         # [0,4,12,12,8] :解
         # istftでやっていることと同じ
-        return AudioFile(
+        return Audio(
             data=self.reduce(
                 lambda x, y: np.pad(x, (0, self.frame_shift))
                 + np.pad(y, (len(x) + self.frame_shift - len(y), 0)),
@@ -308,7 +304,7 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
 
     def to_audio_file(
         self, iterations: int = 20, window: Union[str, np.ndarray, None] = "hann"
-    ) -> AudioFile:
+    ) -> Audio:
         """
         振幅スペクトルから位相復元をしてwavファイルを生成します.
         位相復元アルゴリズムはlibrosaのgiriffinlimを使用します.
@@ -318,9 +314,9 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
             iterations (int, optional): griffinlimアルゴリズムの反復回数
 
         Returns:
-            AudioFile: 位相復元したスペクトルから生成したwavファイル
+            Audio: 位相復元したスペクトルから生成したwavファイル
         """
-        from audio_processing.fileio import AudioFile  # 循環参照対策
+        from .core import Audio  # 循環参照対策
 
         if self.dB:
             print("振幅スペクトルを線形値に変換してください.")
@@ -334,7 +330,7 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
         else:
             raise TypeError("窓関数はstrもしくはnp.ndarrayでなければいけません.")
 
-        return AudioFile(
+        return Audio(
             data=librosa.griffinlim(
                 self.frame_series.T[: self.fft_point // 2 + 1, :],
                 hop_length=self.frame_shift,
@@ -726,14 +722,14 @@ class ComplexCQT(FrameSeries):
         """
         return self.__fs
 
-    def to_audio(self) -> AudioFile:
+    def to_audio(self) -> Audio:
         """
         複素CQTから時間波形に変換します.
 
         Returns:
-            AudioFile: 変換した時間波形
+            Audio: 変換した時間波形
         """
-        from audio_processing.fileio import AudioFile  # 循環参照対策
+        from .core import Audio  # 循環参照対策
 
         audio = librosa.icqt(
             self.frame_series.T,
@@ -743,7 +739,7 @@ class ComplexCQT(FrameSeries):
             bins_per_octave=self.bins_per_octave,
         )
 
-        return AudioFile(audio, self.fs, dtype=np.float32)
+        return Audio(audio, self.fs, dtype=np.float32)
 
     def to_amplitude(self) -> AmplitudeCQT:
         """
@@ -886,15 +882,15 @@ class AmplitudeCQT(FrameSeries):
         """
         return self.__fs
 
-    def to_audio(self, iterations: int = 16) -> AudioFile:
+    def to_audio(self, iterations: int = 16) -> Audio:
         """
         振幅CQTから時間波形に変換します. 位相情報はgriffinlimで計算されます.
         位相を使う場合`ComplexCQT`を使用してください.
 
         Returns:
-            AudioFile: 変換した時間波形
+            Audio: 変換した時間波形
         """
-        from audio_processing.fileio import AudioFile  # 循環参照対策
+        from .core import Audio  # 循環参照対策
 
         audio = librosa.griffinlim_cqt(
             self.frame_series.T,
@@ -905,7 +901,7 @@ class AmplitudeCQT(FrameSeries):
             bins_per_octave=self.bins_per_octave,
         )
 
-        return AudioFile(audio, self.fs, dtype=np.float32)
+        return Audio(audio, self.fs, dtype=np.float32)
 
     def linear_to_dB(self) -> Self:
         """

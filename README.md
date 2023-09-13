@@ -13,6 +13,22 @@
 
 何かしらバグがある場合は、報告してもらえると幸いです。
 
+## インストール
+
+### GitHubから直接インストール
+
+```
+> pip install git+https://github.com/KawaRyoji/audio_processing.git
+```
+
+### ローカルにクローンしてインストール
+
+```
+> git clone https://github.com/KawaRyoji/audio_processing.git
+> cd audio_processing
+> pip install -e .
+```
+
 ## 使用例
 
 ### チェインメソッド
@@ -20,10 +36,10 @@
 #### wavファイルのデータの読み込みからdB値の振幅スペクトルを得る
 
 ```python
-from audio_processing import AudioFile
+from audio_processing import Audio
 
 amp_spectrum_dB = (
-    AudioFile.read("path/to/wav/file.wav") # wavファイルを読み込む
+    Audio.read("path/to/wav/file.wav") # wavファイルを読み込む
     .to_frames(frame_length=1024, frame_shift=256) # 時間波形をフレーム系列に変換する
     .to_spectrum() # スペクトルに変換
     .to_amplitude() # 振幅スペクトルに変換
@@ -35,7 +51,7 @@ amp_spectrum_dB = (
 
 ```python
 amp_spectrum_dB = (
-    AudioFile.read("path/to/audio/file.wav")
+    Audio.read("path/to/audio/file.wav")
     .to_frames(frame_length=1024, frame_shift=256)
     .to_spectrum()
     .dump()
@@ -116,7 +132,7 @@ amp_spectrum_div = amp_spectrum1 / amp_spectrum2
 
 ```python
 amp_spectrum_linear = (
-    WavFile.read("path/to/wav/file.wav")
+    Audio.read("path/to/wav/file.wav")
     .to_frames(frame_length=1024, frame_shift=256)
     .to_spectrum()
     .to_amplitude()
