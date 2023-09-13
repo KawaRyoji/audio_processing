@@ -18,15 +18,15 @@
 ### GitHubから直接インストール
 
 ```
-> pip install git+https://github.com/KawaRyoji/audio_processing.git
+pip install git+https://github.com/KawaRyoji/audio_processing.git
 ```
 
 ### ローカルにクローンしてインストール
 
 ```
-> git clone https://github.com/KawaRyoji/audio_processing.git
-> cd audio_processing
-> pip install -e .
+git clone https://github.com/KawaRyoji/audio_processing.git
+cd audio_processing
+pip install -e .
 ```
 
 ## 使用例
