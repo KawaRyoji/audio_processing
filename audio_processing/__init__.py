@@ -1,1 +1,1 @@
-from .core import Audio, FrameSeries
+from .core import Audio, FrameSeries, StereoAudio
