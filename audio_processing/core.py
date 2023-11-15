@@ -30,7 +30,7 @@ class Audio:
         Raises:
             ValueError: 入力データが1次元出ない場合
         """
-        if len(data.shape) != 1:
+        if data.ndim != 1:
             raise ValueError("時間波形は1次元配列でなければなりません")
 
         self.__fs = fs
@@ -54,9 +54,6 @@ class Audio:
     def dtype(self) -> np.dtype:
         """
         音データのデータタイプ
-
-        Returns:
-            np.dtype: データタイプ
         """
         return self.__data.dtype
 
@@ -75,8 +72,8 @@ class Audio:
         Returns:
             Audio: 生成したインスタンス
         """
-        data, fs = librosa.core.load(path, sr=fs)
-        return cls(data, fs, dtype=dtype)
+        data, fs = librosa.core.load(path, sr=fs, dtype=dtype)
+        return cls(data, fs, dtype=data.dtype)
 
     @classmethod
     def from_noise(
@@ -130,7 +127,7 @@ class Audio:
         音データをmin-max正規化し, 振幅を[-1, 1]にします.
 
         Returns:
-            Self: 正規化した音データのオーディオファイル
+            Audio: 正規化した音データのオーディオファイル
         """
         d_max = np.max(np.abs(self.data))
 
@@ -314,7 +311,181 @@ class Audio:
         return cls(data, fs, dtype=data.dtype)
 
     def __str__(self) -> str:
-        return "data shape: {}\nsampling frequency: {}".format(self.data.shape, self.fs)
+        return "length: {}\nsampling frequency: {}".format(self.data.shape, self.fs)
+
+    def __len__(self) -> int:
+        return self.data.__len__()
+
+
+class StereoAudio:
+    def __init__(self, left_channel: Audio, right_channel: Audio) -> None:
+        """
+        Args:
+            left_channel (Audio): 左チャネルのオーディオファイル
+            right_channel (Audio): 右チャネルのオーディオファイル
+
+        Raises:
+            ValueError: 各チャネルの長さが異なる場合
+            ValueError: 各チャネルのサンプリング周波数が異なる場合
+        """
+        if len(left_channel) != len(right_channel):
+            raise ValueError(
+                "各チャネルの長さが異なります left: {}, right:{}".format(
+                    len(left_channel), len(right_channel)
+                )
+            )
+
+        if left_channel.fs != right_channel.fs:
+            raise ValueError(
+                "各チャネルのサンプリング周波数が異なります left: {}, right:{}".format(
+                    left_channel.fs, right_channel.fs
+                )
+            )
+
+        self.__left_channel = left_channel
+        self.__right_channel = right_channel
+
+    @property
+    def fs(self) -> int:
+        """
+        サンプリング周波数
+        """
+        return self.left_channel.fs
+
+    @property
+    def left_channel(self) -> Audio:
+        """
+        左チャネルのオーディオファイル
+        """
+        return self.__left_channel
+
+    @property
+    def right_channel(self) -> Audio:
+        """
+        右チャネルのオーディオファイル
+        """
+        return self.__right_channel
+
+    @property
+    def dtype(self) -> np.dtype:
+        """
+        音データのデータタイプ
+        """
+        return self.left_channel
+
+    @classmethod
+    def read(
+        cls, path: str, fs: Optional[int] = None, dtype: np.dtype = np.float32
+    ) -> Self:
+        """
+        オーディオファイルからインスタンスを生成します. 対応しているフォーマットは`librosa.core.load`を確認してください.
+
+        Raises:
+            RuntimeError: 読み込んだファイルがステレオ音源でない場合
+        Args:
+            path (str): オーディオファイルパス
+            fs (Optional[int], optional): サンプリング周波数. Noneの場合読み込んだオーディオファイルのサンプリング周波数になります
+            dtype (np.dtype, optional): データタイプ
+
+        Returns:
+            StereoAudio: 生成したインスタンス
+        """
+        data, fs = librosa.core.load(path, sr=fs, dtype=dtype)
+        if data.ndim != 2:
+            raise RuntimeError("読み込んだファイルはステレオ音源ではありません")
+
+        return cls.from_numpy(data[0], data[1], fs, dtype=dtype)
+
+    @classmethod
+    def from_numpy(
+        cls,
+        left_channel: np.ndarray,
+        right_channel: np.ndarray,
+        fs: int,
+        dtype: Optional[np.dtype] = None,
+    ) -> Self:
+        """
+        numpy配列からステレオオーディオファイルを生成します
+
+        Args:
+            left_channel (np.ndarray): 左チャネルのデータ
+            right_channel (np.ndarray): 右チャネルのデータ
+            fs (int): サンプリング周波数
+            dtype (Optional[np.dtype], optional): データタイプ
+
+        Returns:
+            StereoAudio: 生成したステレオオーディオファイル
+        """
+        return cls(
+            Audio(left_channel, fs, dtype=dtype), Audio(right_channel, fs, dtype=dtype)
+        )
+
+    def to_audio_instances(self) -> tuple[Audio, Audio]:
+        """
+        各チャネルの音をモノラルとしてオーディオファイルを生成します
+
+        Returns:
+            tuple[Audio, Audio]: 左チャネルのオーディオファイル, 右チャネルのオーディオファイル
+        """
+        return Audio(self.left_channel, self.fs), Audio(self.right_channel, self.fs)
+
+    def normalize(self) -> Self:
+        """
+        各チャネルの音データをmin-max正規化し, 振幅を[-1, 1]にします.
+
+        Returns:
+            StereoAudio: 正規化した音データのオーディオファイル
+        """
+        return StereoAudio(
+            self.left_channel.normalize(), self.right_channel.normalize()
+        )
+
+    def save(
+        self,
+        path: str,
+        target_bits: int = 16,
+        normalize: bool = True,
+        overwrite: bool = False,
+    ) -> Self:
+        """
+        オーディオファイルに書き込みます.
+        `overwrite`が`False`の場合かつすでにファイルが存在する場合上書きされません.
+        対応しているフォーマットは`soundfile.write`を確認してください.
+
+        Args:
+            path (str): 保存先のパス
+            target_bits (int, optional): 書き込むbit数
+            normalize (bool, optional): 書き込む前に上書きするかどうか
+            overwrite (bool, optional): 上書きを許可するかどうか
+
+        Returns:
+            Audio: 自身のインスタンス
+        """
+        if not overwrite and os.path.exists(path):
+            print(path, "は既に存在します")
+            return self
+
+        left_channel = self.normalize().left_channel if normalize else self.left_channel
+        right_channel = (
+            self.normalize().right_channel if normalize else self.right_channel
+        )
+
+        Path(path).parent.mkdir(exist_ok=True)
+
+        soundfile.write(
+            path,
+            np.hstack(left_channel, right_channel),
+            self.fs,
+            "PCM_{}".format(target_bits),
+        )
+
+        return self
+
+    def __str__(self) -> str:
+        return "length: {}\nsampling frequency: {}".format(self.__len__(), self.fs)
+
+    def __len__(self) -> int:
+        return self.left_channel.__len__()
 
 
 class CannotCalcError(Exception):
