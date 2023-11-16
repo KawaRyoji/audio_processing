@@ -474,7 +474,7 @@ class StereoAudio:
 
         soundfile.write(
             path,
-            np.hstack(left_channel, right_channel),
+            np.vstack((left_channel.data, right_channel.data)).T,
             self.fs,
             "PCM_{}".format(target_bits),
         )
