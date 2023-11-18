@@ -25,7 +25,7 @@ class WaveformFrameSeries(TimeDomainFrameSeries):
         waveform: np.ndarray,
         frame_length: int,
         frame_shift: int,
-        fs: int,
+        fs: float,
         padding: bool = True,
         padding_mode: str = "reflect",
         dtype: type = np.float32,
@@ -37,7 +37,7 @@ class WaveformFrameSeries(TimeDomainFrameSeries):
             waveform (np.ndarray): 時間波形(1次元)
             frame_length (int): フレーム長
             frame_shift (int): シフト長
-            fs (int): サンプリング周波数
+            fs (float): サンプリング周波数
             padding (bool, optional): フレームが分析窓の中心にするようにパディングするかどうか
             padding_mode (str, optional): パディングの手法
             dtype (_type_, optional): 保持するデータの型
@@ -45,12 +45,14 @@ class WaveformFrameSeries(TimeDomainFrameSeries):
         Returns:
             Waveform: 時間波形のフレームの系列
         """
-        if padding:
-            pad = frame_length // 2
-            waveform = np.pad(waveform, pad_width=pad, mode=padding_mode)
+        waveform = (
+            np.pad(waveform, pad_width=frame_length // 2, mode=padding_mode)
+            if padding
+            else waveform
+        )
 
         num_frame = 1 + (len(waveform) - frame_length) // frame_shift
-        frames = np.array(
+        frames: np.ndarray = np.array(
             [
                 waveform[slice(*edge_point(i, frame_length, frame_shift))]
                 for i in range(num_frame)
@@ -138,7 +140,7 @@ class Spectrum(FreqDomainFrameSeries):
         frame_length: int,
         frame_shift: int,
         fft_point: int,
-        fs: int,
+        fs: float,
     ) -> None:
         super().__init__(
             frame_series,
@@ -549,12 +551,7 @@ class Cepstrum(TimeDomainFrameSeries):
                 axis=1,
             )
 
-        return Cepstrum(
-            liftered,
-            self.frame_length,
-            self.frame_shift,
-            self.fs,
-        )
+        return self.copy_with(frame_series=liftered)
 
     def to_mel_cepstrum(self, alpha: float, bins: Optional[int] = None) -> MelCepstrum:
         """
@@ -676,7 +673,7 @@ class ComplexCQT(FrameSeries):
         self,
         frame_series: np.ndarray,
         frame_shift: int,
-        fs: int,
+        fs: float,
         fmin: float,
         bins_per_octave: int = 36,
     ) -> None:
@@ -684,7 +681,7 @@ class ComplexCQT(FrameSeries):
         Args:
             frame_series (np.ndarray): フレーム単位の系列(Frames, CQT bins)
             frame_shift (int): シフト長
-            fs (int): サンプリング周波数
+            fs (float): サンプリング周波数
             fmin (float): CQT の最低周波数
             dB (bool, optional): この系列がdB値であるか. Trueの場合, この系列はdB値であることを示します.
             power (bool, optional): この系列がパワーであるか. Trueの場合, この系列はパワー値であることを示します.
@@ -727,12 +724,12 @@ class ComplexCQT(FrameSeries):
         return self.__bins_per_octave
 
     @property
-    def fs(self) -> int:
+    def fs(self) -> float:
         """
         この系列を生成したサンプリング周波数を返します.
 
         Returns:
-            int: サンプリング周波数
+            float: サンプリング周波数
         """
         return self.__fs
 
@@ -784,7 +781,7 @@ class ComplexCQT(FrameSeries):
         self,
         frame_series: Optional[np.ndarray] = None,
         frame_shift: Optional[int] = None,
-        fs: Optional[int] = None,
+        fs: Optional[float] = None,
         fmin: Optional[float] = None,
         bins_per_octave: Optional[int] = None,
     ) -> Self:
@@ -814,7 +811,7 @@ class AmplitudeCQT(FrameSeries):
         self,
         frame_series: np.ndarray,
         frame_shift: int,
-        fs: int,
+        fs: float,
         fmin: float,
         bins_per_octave: int = 36,
         dB: bool = False,
@@ -825,7 +822,7 @@ class AmplitudeCQT(FrameSeries):
         Args:
             frame_series (np.ndarray): フレーム単位の系列(Frames, CQT bins)
             frame_shift (int): シフト長
-            fs (int): サンプリング周波数
+            fs (float): サンプリング周波数
             fmin (float): CQT の最低周波数
             dB (bool, optional): この系列がdB値であるか. Trueの場合, この系列はdB値であることを示します.
             power (bool, optional): この系列がパワーであるか. Trueの場合, この系列はパワー値であることを示します.
@@ -893,12 +890,12 @@ class AmplitudeCQT(FrameSeries):
         return self.__bins_per_octave
 
     @property
-    def fs(self) -> int:
+    def fs(self) -> float:
         """
         この系列を生成したサンプリング周波数を返します.
 
         Returns:
-            int: サンプリング周波数
+            float: サンプリング周波数
         """
         return self.__fs
 
@@ -1010,7 +1007,7 @@ class AmplitudeCQT(FrameSeries):
         self,
         frame_series: Optional[np.ndarray] = None,
         frame_shift: Optional[int] = None,
-        fs: Optional[int] = None,
+        fs: Optional[float] = None,
         fmin: Optional[float] = None,
         bins_per_octave: Optional[int] = None,
         dB: Optional[bool] = None,

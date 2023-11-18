@@ -18,11 +18,13 @@ if TYPE_CHECKING:
 
 
 class Audio:
-    def __init__(self, data: np.ndarray, fs: int, dtype: Optional[type] = None) -> None:
+    def __init__(
+        self, data: np.ndarray, fs: float, dtype: Optional[type] = None
+    ) -> None:
         """
         Args:
             data (np.ndarray): 時間波形 (1次元を想定)
-            fs (int): サンプリング周波数
+            fs (float): サンプリング周波数
             dtype (Optional[type], optional): データタイプ. `None`の場合`data`のデータタイプになります
 
         Raises:
@@ -35,7 +37,7 @@ class Audio:
         self.__data = data.astype(dtype=dtype) if dtype is not None else data
 
     @property
-    def fs(self) -> int:
+    def fs(self) -> float:
         """
         サンプリング周波数
         """
@@ -64,14 +66,14 @@ class Audio:
 
     @classmethod
     def read(
-        cls, path: str, fs: Optional[int] = None, dtype: type = np.float32
+        cls, path: str, fs: Optional[float] = None, dtype: type = np.float32
     ) -> Self:
         """
         オーディオファイルからインスタンスを生成します. 対応しているフォーマットは`librosa.core.load`を確認してください.
 
         Args:
             path (str): オーディオファイルパス
-            fs (Optional[int], optional): サンプリング周波数. Noneの場合読み込んだオーディオファイルのサンプリング周波数になります
+            fs (Optional[float], optional): サンプリング周波数. Noneの場合読み込んだオーディオファイルのサンプリング周波数になります
             dtype (type, optional): データタイプ
 
         Returns:
@@ -83,7 +85,7 @@ class Audio:
     @classmethod
     def from_noise(
         cls,
-        fs: int,
+        fs: float,
         sec: float,
         sigma: float,
         mu: float = 0,
@@ -107,13 +109,13 @@ class Audio:
 
         return cls(signal, fs, dtype=dtype)
 
-    def resample(self, target_fs: int) -> Self:
+    def resample(self, target_fs: float) -> Self:
         """
         サンプリング周波数を変換します.
         目標のサンプリング周波数が現在のサンプリング周波数と同じ場合は自身のインスタンスを返します.
 
         Args:
-            target_fs (int): 目標のサンプリング周波数
+            target_fs (float): 目標のサンプリング周波数
 
         Returns:
             Audio: サンプリング周波数を変換したインスタンス
@@ -125,7 +127,7 @@ class Audio:
             y=self.data, orig_sr=self.fs, target_sr=target_fs
         )
 
-        return Audio(resampled, target_fs, dtype=resampled.dtype)
+        return self.copy_with(data=resampled, fs=target_fs)
 
     def normalize(self) -> Self:
         """
@@ -136,14 +138,13 @@ class Audio:
         """
         d_max = np.max(np.abs(self.data))
 
-        return Audio(self.data / d_max, self.fs, dtype=self.dtype)
+        return self.copy_with(data=self.data / d_max)
 
     def pad(
         self, pad_width: Union[int, tuple[int, int]], value: Union[int, float] = 0
     ) -> Self:
-        return Audio(
-            np.pad(self.data, pad_width, mode="constant", constant_values=value),
-            self.fs,
+        return self.copy_with(
+            data=np.pad(self.data, pad_width, mode="constant", constant_values=value)
         )
 
     def save(
@@ -179,7 +180,7 @@ class Audio:
 
         return self
 
-    def plot(self) -> None:
+    def plot(self, *args: Any, **kwargs: Any) -> None:
         """
         音データをプロットします.
         """
@@ -322,6 +323,14 @@ class Audio:
 
         return cls(data, fs, dtype=data.dtype)
 
+    def copy_with(
+        self, data: Optional[np.ndarray] = None, fs: Optional[float] = None
+    ) -> Self:
+        data = self.data if data is None else data
+        fs = self.fs if fs is None else fs
+
+        return self.__class__(data, fs)
+
     def __str__(self) -> str:
         return "length: {}\nsampling frequency: {}".format(self.data.shape, self.fs)
 
@@ -358,7 +367,7 @@ class StereoAudio:
         self.__right_channel = right_channel
 
     @property
-    def fs(self) -> int:
+    def fs(self) -> float:
         """
         サンプリング周波数
         """
@@ -387,7 +396,7 @@ class StereoAudio:
 
     @classmethod
     def read(
-        cls, path: str, fs: Optional[int] = None, dtype: type = np.float32
+        cls, path: str, fs: Optional[float] = None, dtype: type = np.float32
     ) -> Self:
         """
         オーディオファイルからインスタンスを生成します. 対応しているフォーマットは`librosa.core.load`を確認してください.
@@ -396,7 +405,7 @@ class StereoAudio:
             RuntimeError: 読み込んだファイルがステレオ音源でない場合
         Args:
             path (str): オーディオファイルパス
-            fs (Optional[int], optional): サンプリング周波数. Noneの場合読み込んだオーディオファイルのサンプリング周波数になります
+            fs (Optional[float], optional): サンプリング周波数. Noneの場合読み込んだオーディオファイルのサンプリング周波数になります
             dtype (type, optional): データタイプ
 
         Returns:
@@ -413,7 +422,7 @@ class StereoAudio:
         cls,
         left_channel: np.ndarray,
         right_channel: np.ndarray,
-        fs: int,
+        fs: float,
         dtype: Optional[type] = None,
     ) -> Self:
         """
@@ -422,7 +431,7 @@ class StereoAudio:
         Args:
             left_channel (np.ndarray): 左チャネルのデータ
             right_channel (np.ndarray): 右チャネルのデータ
-            fs (int): サンプリング周波数
+            fs (float): サンプリング周波数
             dtype (Optional[type], optional): データタイプ
 
         Returns:
@@ -432,16 +441,7 @@ class StereoAudio:
             Audio(left_channel, fs, dtype=dtype), Audio(right_channel, fs, dtype=dtype)
         )
 
-    def to_audio_instances(self) -> tuple[Audio, Audio]:
-        """
-        各チャネルの音をモノラルとしてオーディオファイルを生成します
-
-        Returns:
-            tuple[Audio, Audio]: 左チャネルのオーディオファイル, 右チャネルのオーディオファイル
-        """
-        return Audio(self.left_channel, self.fs), Audio(self.right_channel, self.fs)
-
-    def normalize(self) -> Self:
+    def normalize(self) -> StereoAudio:
         """
         各チャネルの音データをmin-max正規化し, 振幅を[-1, 1]にします.
 
@@ -878,7 +878,7 @@ class FrameSeries:
 
         return cls(**params)
 
-    def plot(self, color_map: str = "magma") -> None:
+    def plot(self, *args: Any, color_map: str = "magma", **kwargs: Any) -> None:
         """
         フレーム系列をプロットします.
         このメソッドをオーバーライドすることで`show()`と`save_as_fig()`の出力を任意のプロットに変更できます.
@@ -1113,7 +1113,7 @@ class TimeDomainFrameSeries(FrameSeries):
         frame_series: np.ndarray,
         frame_length: int,
         frame_shift: int,
-        fs: int,
+        fs: float,
         dtype: Optional[type] = None,
     ) -> None:
         """
@@ -1121,7 +1121,7 @@ class TimeDomainFrameSeries(FrameSeries):
             frame_series (np.ndarray): フレーム単位の系列(Frames, Time domain feature)
             frame_length (int): フレーム長
             frame_shift (int): シフト長
-            fs (int): サンプリング周波数
+            fs (float): サンプリング周波数
             dtype (Optional[type], optional): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
         """
         super().__init__(frame_series, dtype=dtype)
@@ -1150,12 +1150,12 @@ class TimeDomainFrameSeries(FrameSeries):
         return self.__frame_shift
 
     @property
-    def fs(self) -> int:
+    def fs(self) -> float:
         """
         この系列を生成したサンプリング周波数を返します.
 
         Returns:
-            int: サンプリング周波数
+            float: サンプリング周波数
         """
         return self.__fs
 
@@ -1166,7 +1166,7 @@ class TimeDomainFrameSeries(FrameSeries):
         frame_series: Optional[np.ndarray] = None,
         frame_length: Optional[int] = None,
         frame_shift: Optional[int] = None,
-        fs: Optional[int] = None,
+        fs: Optional[float] = None,
     ) -> Self:
         """
         引数の値を使って自身のインスタンスをコピーします.
@@ -1175,7 +1175,7 @@ class TimeDomainFrameSeries(FrameSeries):
             frame_series (Optional[np.ndarray], optional): フレーム単位の系列
             frame_length (Optional[int], optional): フレーム長
             frame_shift (Optional[int], optional): フレームシフト
-            fs (Optional[int], optional): サンプリング周波数
+            fs (Optional[float], optional): サンプリング周波数
 
         Returns:
             Self: コピーしたインスタンス
@@ -1200,7 +1200,7 @@ class FreqDomainFrameSeries(FrameSeries):
         frame_length: int,
         frame_shift: int,
         fft_point: int,
-        fs: int,
+        fs: float,
         dB: bool = False,
         power: bool = False,
         dtype: Optional[type] = None,
@@ -1211,7 +1211,7 @@ class FreqDomainFrameSeries(FrameSeries):
             frame_length (int): フレーム長
             frame_shift (int): シフト長
             fft_point (int): FFTポイント数
-            fs (int): サンプリング周波数
+            fs (float): サンプリング周波数
             dB (bool, optional): この系列がdB値であるか. Trueの場合, この系列はdB値であることを示します.
             power (bool, optional): この系列がパワーであるか. Trueの場合, この系列はパワー値であることを示します.
             dtype (Optional[type], optional): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
@@ -1267,12 +1267,12 @@ class FreqDomainFrameSeries(FrameSeries):
         return self.__power
 
     @property
-    def fs(self) -> int:
+    def fs(self) -> float:
         """
         この系列を生成したサンプリング周波数を返します.
 
         Returns:
-            int: サンプリング周波数
+            float: サンプリング周波数
         """
         return self.__fs
 
@@ -1435,7 +1435,7 @@ class FreqDomainFrameSeries(FrameSeries):
         frame_length: Optional[int] = None,
         frame_shift: Optional[int] = None,
         fft_point: Optional[int] = None,
-        fs: Optional[int] = None,
+        fs: Optional[float] = None,
         dB: Optional[bool] = None,
         power: Optional[bool] = None,
     ) -> Self:
@@ -1447,7 +1447,7 @@ class FreqDomainFrameSeries(FrameSeries):
             frame_length (Optional[int], optional): フレーム長
             frame_shift (Optional[int], optional): フレームシフト
             fft_point (Optional[int], optional): FFTポイント数
-            fs (Optional[int], optional): サンプリング周波数
+            fs (Optional[float], optional): サンプリング周波数
             dB (Optional[bool], optional): dB値であるか
             power (Optional[bool], optional): パワー値であるか
 
