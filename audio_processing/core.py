@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import inspect
 import os
-import re
 from functools import reduce
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Union
@@ -734,7 +732,9 @@ class FrameSeries:
                 for other in others
             ]
         ):
-            raise ValueError("結合する全てのインスタンスのプロパティが一致する必要があります")
+            raise ValueError(
+                "結合する全てのインスタンスのプロパティが一致する必要があります"
+            )
 
         return self.copy_with(
             frame_series=reduce(
@@ -776,7 +776,9 @@ class FrameSeries:
                 for other in others
             ]
         ):
-            raise ValueError("結合する全てのインスタンスのプロパティが一致する必要があります")
+            raise ValueError(
+                "結合する全てのインスタンスのプロパティが一致する必要があります"
+            )
 
         return self.copy_with(
             frame_series=reduce(
@@ -786,37 +788,6 @@ class FrameSeries:
                 others[1:],
                 others[0].frame_series,
             )
-        )
-
-    def properties(self) -> dict[str, Any]:
-        """
-        このフレームの系列を生成したプロパティを辞書形式で返します
-
-        Returns:
-            dict[str, Any]: プロパティの辞書
-        """
-
-        bases = list(
-            map(
-                lambda cls: "_" + cls.__name__,
-                filter(
-                    lambda cls: cls is not object,
-                    inspect.getmro(self.__class__),
-                ),
-            )
-        )
-
-        return dict(
-            map(
-                lambda e: (
-                    re.sub("(" + "|".join(bases + ["__"]) + ")", "", e[0]),
-                    e[1],
-                ),
-                filter(
-                    lambda e: not "__frame_series" in e[0],
-                    self.__dict__.items(),
-                ),
-            ),
         )
 
     def save(self, path: str, compress: bool = False, overwrite: bool = False) -> Self:
@@ -843,14 +814,14 @@ class FrameSeries:
                 path,
                 type=self.__class__.__name__,
                 frame_series=self.frame_series,
-                **self.properties(),
+                **self.__dict__,
             )
         else:
             np.savez(
                 path,
                 type=self.__class__.__name__,
                 frame_series=self.frame_series,
-                **self.properties(),
+                **self.__dict__,
             )
 
         return self
@@ -874,7 +845,9 @@ class FrameSeries:
         type_name = params.pop("type")
 
         if type_name != cls.__name__:
-            raise TypeError("{} は type:{} で読み込む必要があります.".format(path, type_name))
+            raise TypeError(
+                "{} は type:{} で読み込む必要があります.".format(path, type_name)
+            )
 
         return cls(**params)
 
@@ -978,7 +951,7 @@ class FrameSeries:
         Returns:
             bool: 自身のインスタンスのプロパティともう一方のプロパティが一致するか
         """
-        return self.properties() == other.properties()
+        return self.__dict__ == other.__dict__
 
     def dump(self) -> Self:
         """
@@ -1013,7 +986,9 @@ class FrameSeries:
                     frame_series=self.frame_series + other.frame_series
                 )
             else:
-                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+                raise CannotCalcError(
+                    "この二つのフレーム系列の演算は行えません.\n", str(self), str(other)
+                )
 
         return self.copy_with(frame_series=self.frame_series + other)
 
@@ -1024,7 +999,9 @@ class FrameSeries:
                     frame_series=self.frame_series - other.frame_series
                 )
             else:
-                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+                raise CannotCalcError(
+                    "この二つのフレーム系列の演算は行えません.\n", str(self), str(other)
+                )
 
         return self.copy_with(frame_series=self.frame_series - other)
 
@@ -1035,7 +1012,9 @@ class FrameSeries:
                     frame_series=self.frame_series * other.frame_series
                 )
             else:
-                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+                raise CannotCalcError(
+                    "この二つのフレーム系列の演算は行えません.\n", str(self), str(other)
+                )
 
         return self.copy_with(frame_series=self.frame_series * other)
 
@@ -1046,7 +1025,9 @@ class FrameSeries:
                     frame_series=self.frame_series / other.frame_series
                 )
             else:
-                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+                raise CannotCalcError(
+                    "この二つのフレーム系列の演算は行えません.\n", str(self), str(other)
+                )
 
         return self.copy_with(frame_series=self.frame_series / other)
 
@@ -1086,16 +1067,13 @@ class FrameSeries:
     def __gt__(self, other: Any) -> np.ndarray:
         return self.frame_series.__gt__(other)
 
-    def __repr__(self) -> str:
-        return self.frame_series.__repr__()
-
     def __str__(self) -> str:
         string = "Feature Summary\n"
         string += "------------------------------------\n"
         string += "type: " + self.__class__.__name__ + "\n"
         string += "data shape: {}\n".format(self.shape)
         string += "data type: {}\n".format(self.dtype)
-        for feature, value in self.properties().items():
+        for feature, value in self.__dict__.items():
             string += "{}: {}\n".format(feature, value)
         string += "------------------------------------\n"
 
@@ -1105,7 +1083,7 @@ class FrameSeries:
 class TimeDomainFrameSeries(FrameSeries):
     """
     時間領域のフレームの系列を扱うクラスです.
-    継承して新しいプロパティを追加する場合, `copy_with()`と`properties()`を適切にオーバーライドしてください.
+    継承して新しいプロパティを追加する場合, `copy_with()`を適切にオーバーライドしてください.
     """
 
     def __init__(
@@ -1191,7 +1169,7 @@ class TimeDomainFrameSeries(FrameSeries):
 class FreqDomainFrameSeries(FrameSeries):
     """
     周波数領域のフレームの系列を扱うクラスです.
-    継承して新しいプロパティを追加する場合, `copy_with()`と`properties()`を適切にオーバーライドしてください.
+    継承して新しいプロパティを追加する場合, `copy_with()`を適切にオーバーライドしてください.
     """
 
     def __init__(

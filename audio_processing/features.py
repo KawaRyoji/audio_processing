@@ -4,14 +4,47 @@ from typing import TYPE_CHECKING, Optional, Union
 
 import librosa
 import numpy as np
-from scipy.signal.windows import get_window
+from librosa.filters import get_window
 from typing_extensions import Self, override
 
 from .core import FrameSeries, FreqDomainFrameSeries, TimeDomainFrameSeries
-from .utils import edge_point, to_symmetry
 
 if TYPE_CHECKING:
     from .core import Audio
+
+
+def edge_point(index: int, frame_length: int, frame_shift: int) -> tuple[int, int]:
+    """
+    `index`番目のフレームの両端のサンプル数を返します.
+
+    Args:
+        index (int): フレーム番号
+        frame_length (int): フレーム長
+        frame_shift (int): シフト長
+
+    Returns:
+        Tuple[int, int]: フレームの両端のサンプル数
+    """
+    start = index * frame_shift
+    end = start + frame_length
+    return start, end
+
+
+def to_symmetry(series: np.ndarray) -> np.ndarray:
+    """
+    (time, fft_point // 2 + 1) または (time, fft_point // 2)の非対称スペクトログラムを対称にします.
+
+    Args:
+        series (np.ndarray): 非対称スペクトログラム
+
+    Returns:
+        np.ndarray: 対称スペクトログラム (time, fft_point)
+    """
+    return (
+        np.concatenate([series, np.fliplr(series)], axis=1)
+        if series.shape[1] % 2 == 0
+        else np.concatenate([series, np.fliplr(series)[:, 1:-1]], axis=1)
+    )
 
 
 class WaveformFrameSeries(TimeDomainFrameSeries):
@@ -162,7 +195,9 @@ class Spectrum(FreqDomainFrameSeries):
 
     @override
     def linear_to_power(self) -> Self:
-        print("パワースペクトルを求めたい場合、代わりに spectrum.to_amplitude().to_power() を使用してください")
+        print(
+            "パワースペクトルを求めたい場合、代わりに spectrum.to_amplitude().to_power() を使用してください"
+        )
         return self
 
     @override
@@ -330,6 +365,7 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
 
         if self.dB:
             print("振幅スペクトルを線形値に変換してください.")
+            return self
 
         if window is None:
             window_func = np.ones(self.frame_length)
