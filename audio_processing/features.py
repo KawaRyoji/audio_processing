@@ -4,14 +4,47 @@ from typing import TYPE_CHECKING, Optional, Union
 
 import librosa
 import numpy as np
-from scipy.signal.windows import get_window
+from librosa.filters import get_window
 from typing_extensions import Self, override
 
 from .core import FrameSeries, FreqDomainFrameSeries, TimeDomainFrameSeries
-from .utils import edge_point, to_symmetry
 
 if TYPE_CHECKING:
     from .core import Audio
+
+
+def edge_point(index: int, frame_length: int, frame_shift: int) -> tuple[int, int]:
+    """
+    `index`番目のフレームの両端のサンプル数を返します.
+
+    Args:
+        index (int): フレーム番号
+        frame_length (int): フレーム長
+        frame_shift (int): シフト長
+
+    Returns:
+        Tuple[int, int]: フレームの両端のサンプル数
+    """
+    start = index * frame_shift
+    end = start + frame_length
+    return start, end
+
+
+def to_symmetry(series: np.ndarray) -> np.ndarray:
+    """
+    (time, fft_point // 2 + 1) または (time, fft_point // 2)の非対称スペクトログラムを対称にします.
+
+    Args:
+        series (np.ndarray): 非対称スペクトログラム
+
+    Returns:
+        np.ndarray: 対称スペクトログラム (time, fft_point)
+    """
+    return (
+        np.concatenate([series, np.fliplr(series)], axis=1)
+        if series.shape[1] % 2 == 0
+        else np.concatenate([series, np.fliplr(series)[:, 1:-1]], axis=1)
+    )
 
 
 class WaveformFrameSeries(TimeDomainFrameSeries):
@@ -28,7 +61,7 @@ class WaveformFrameSeries(TimeDomainFrameSeries):
         fs: int,
         padding: bool = True,
         padding_mode: str = "reflect",
-        dtype: np.dtype = np.float32,
+        dtype: type = np.float32,
     ) -> Self:
         """
         時間波形から各種パラメータを使ってフレームの系列に変換し, `Waveform`インスタンスを生成します.
@@ -162,7 +195,9 @@ class Spectrum(FreqDomainFrameSeries):
 
     @override
     def linear_to_power(self) -> Self:
-        print("パワースペクトルを求めたい場合、代わりに spectrum.to_amplitude().to_power() を使用してください")
+        print(
+            "パワースペクトルを求めたい場合、代わりに spectrum.to_amplitude().to_power() を使用してください"
+        )
         return self
 
     @override
@@ -187,20 +222,29 @@ class Spectrum(FreqDomainFrameSeries):
             power=False,
         )
 
-    def to_phase(self) -> PhaseSpectrum:
+    def to_phase(self, dtype: type = np.float32) -> PhaseSpectrum:
         """
         スペクトルを位相スペクトルに変換します.
+
+        Args:
+            dtype (type): 変換後のデータタイプ. デフォルトは`np.float32`です.
 
         Returns:
             PhaseSpectrum: 位相スペクトル
         """
-        return PhaseSpectrum(np.angle(self.frame_series))
+        return PhaseSpectrum(np.angle(self.frame_series), dtype=dtype)
 
     def to_waveform(
-        self, window: Union[str, np.ndarray, None] = "hann"
+        self,
+        window: Union[str, np.ndarray, None] = "hann",
+        dtype: type = np.float32,
     ) -> WaveformFrameSeries:
         """
         スペクトルを時間波形に変換します.
+
+        Args:
+            window (str, np.ndarray, None): 適用する窓関数. 文字列を指定した場合, scipyの`get_window`関数が呼ばれます.
+            dtype (type): 変換後のデータタイプ. デフォルトは`np.float32`です.
 
         Returns:
             Waveform: 変換した時間波形
@@ -219,6 +263,7 @@ class Spectrum(FreqDomainFrameSeries):
             self.frame_length,
             self.frame_shift,
             self.fs,
+            dtype=dtype,
         )
 
     def decompose(self) -> tuple[AmplitudeSpectrum, PhaseSpectrum]:
@@ -320,6 +365,7 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
 
         if self.dB:
             print("振幅スペクトルを線形値に変換してください.")
+            return self
 
         if window is None:
             window_func = np.ones(self.frame_length)
@@ -373,12 +419,13 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
             self.fs,
         )
 
-    def to_mel(self, bins: int) -> MelSpectrum:
+    def to_mel(self, bins: int, dtype: type = np.float32) -> MelSpectrum:
         """
         振幅スペクトルをメルスペクトルに変換します.
 
         Args:
             bins (int): メルのビン数
+            dtype (type): 変換後のデータタイプ. デフォルトは`np.float32`です.
 
         Returns:
             MelSpectrum: メルスペクトル
@@ -404,6 +451,7 @@ class AmplitudeSpectrum(FreqDomainFrameSeries):
             self.fs,
             dB=False,
             power=self.power,
+            dtype=dtype,
         )
 
 
@@ -606,12 +654,15 @@ class MelCepstrum(TimeDomainFrameSeries):
     メルケプストラムのフレームの系列を扱うクラスです.
     """
 
-    def to_spectrum(self, fft_point: Optional[int] = None) -> MelSpectrum:
+    def to_spectrum(
+        self, fft_point: Optional[int] = None, dtype: type = np.float32
+    ) -> MelSpectrum:
         """
         メルケプストラムをメルスペクトルに変換します.
 
         Args:
             fft_point (Optional[int], optional): FFTポイント数. `None`の場合フレーム長を使用します
+            dtype (type): 変換後のデータタイプ. デフォルトは`np.float32`です.
 
         Returns:
             MelSpectrum: メルスペクトル
@@ -626,6 +677,7 @@ class MelCepstrum(TimeDomainFrameSeries):
             self.fs,
             dB=False,
             power=False,
+            dtype=dtype,
         )
 
     def to_cepstrum(self, alpha: int) -> Cepstrum:
@@ -663,7 +715,6 @@ class ComplexCQT(FrameSeries):
         fs: int,
         fmin: float,
         bins_per_octave: int = 36,
-        dtype: Optional[np.dtype] = None,
     ) -> None:
         """
         Args:
@@ -673,9 +724,8 @@ class ComplexCQT(FrameSeries):
             fmin (float): CQT の最低周波数
             dB (bool, optional): この系列がdB値であるか. Trueの場合, この系列はdB値であることを示します.
             power (bool, optional): この系列がパワーであるか. Trueの場合, この系列はパワー値であることを示します.
-            dtype (np.dtype): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
         """
-        super().__init__(frame_series, dtype=dtype)
+        super().__init__(frame_series)
 
         self.__frame_shift = frame_shift
         self.__fs = fs
@@ -722,9 +772,12 @@ class ComplexCQT(FrameSeries):
         """
         return self.__fs
 
-    def to_audio(self) -> Audio:
+    def to_audio(self, dtype: type = np.float32) -> Audio:
         """
         複素CQTから時間波形に変換します.
+
+        Args:
+            dtype (type): 変換後のデータタイプ. デフォルトは`np.float32`です.
 
         Returns:
             Audio: 変換した時間波形
@@ -739,11 +792,14 @@ class ComplexCQT(FrameSeries):
             bins_per_octave=self.bins_per_octave,
         )
 
-        return Audio(audio, self.fs, dtype=np.float32)
+        return Audio(audio, self.fs, dtype=dtype)
 
-    def to_amplitude(self) -> AmplitudeCQT:
+    def to_amplitude(self, dtype: type = np.float32) -> AmplitudeCQT:
         """
         複素CQTを振幅CQTに変換します.
+
+        Args:
+            dtype (type): 変換後のデータタイプ. デフォルトは`np.float32`です.
 
         Returns:
             AmplitudeCQT: 振幅CQT
@@ -756,7 +812,7 @@ class ComplexCQT(FrameSeries):
             bins_per_octave=self.bins_per_octave,
             dB=False,
             power=False,
-            dtype=np.float32,
+            dtype=dtype,
         )
 
     @override
@@ -799,7 +855,7 @@ class AmplitudeCQT(FrameSeries):
         bins_per_octave: int = 36,
         dB: bool = False,
         power: bool = False,
-        dtype: Optional[np.dtype] = None,
+        dtype: Optional[type] = None,
     ) -> None:
         """
         Args:
@@ -809,7 +865,7 @@ class AmplitudeCQT(FrameSeries):
             fmin (float): CQT の最低周波数
             dB (bool, optional): この系列がdB値であるか. Trueの場合, この系列はdB値であることを示します.
             power (bool, optional): この系列がパワーであるか. Trueの場合, この系列はパワー値であることを示します.
-            dtype (np.dtype): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
+            dtype (type): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
         """
         super().__init__(frame_series, dtype=dtype)
 
@@ -887,6 +943,9 @@ class AmplitudeCQT(FrameSeries):
         振幅CQTから時間波形に変換します. 位相情報はgriffinlimで計算されます.
         位相を使う場合`ComplexCQT`を使用してください.
 
+        Args:
+            iterations (int): gliffinlimの繰り返し回数
+
         Returns:
             Audio: 変換した時間波形
         """
@@ -901,7 +960,7 @@ class AmplitudeCQT(FrameSeries):
             bins_per_octave=self.bins_per_octave,
         )
 
-        return Audio(audio, self.fs, dtype=np.float32)
+        return Audio(audio, self.fs)
 
     def linear_to_dB(self) -> Self:
         """

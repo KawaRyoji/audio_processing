@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import inspect
 import os
-import re
 from functools import reduce
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Union
@@ -18,14 +16,12 @@ if TYPE_CHECKING:
 
 
 class Audio:
-    def __init__(
-        self, data: np.ndarray, fs: int, dtype: Optional[np.dtype] = None
-    ) -> None:
+    def __init__(self, data: np.ndarray, fs: int, dtype: Optional[type] = None) -> None:
         """
         Args:
             data (np.ndarray): 時間波形 (1次元を想定)
             fs (int): サンプリング周波数
-            dtype (Optional[np.dtype], optional): データタイプ. `None`の場合`data`のデータタイプになります
+            dtype (Optional[type], optional): データタイプ. `None`の場合`data`のデータタイプになります
 
         Raises:
             ValueError: 入力データが1次元出ない場合
@@ -51,15 +47,22 @@ class Audio:
         return self.__data
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> type:
         """
         音データのデータタイプ
         """
         return self.__data.dtype
 
+    @property
+    def sec(self) -> float:
+        """
+        音データの秒数
+        """
+        return self.data.shape[0] / self.fs
+
     @classmethod
     def read(
-        cls, path: str, fs: Optional[int] = None, dtype: np.dtype = np.float32
+        cls, path: str, fs: Optional[int] = None, dtype: type = np.float32
     ) -> Self:
         """
         オーディオファイルからインスタンスを生成します. 対応しているフォーマットは`librosa.core.load`を確認してください.
@@ -67,7 +70,7 @@ class Audio:
         Args:
             path (str): オーディオファイルパス
             fs (Optional[int], optional): サンプリング周波数. Noneの場合読み込んだオーディオファイルのサンプリング周波数になります
-            dtype (np.dtype, optional): データタイプ
+            dtype (type, optional): データタイプ
 
         Returns:
             Audio: 生成したインスタンス
@@ -82,7 +85,7 @@ class Audio:
         sec: float,
         sigma: float,
         mu: float = 0,
-        dtype: np.dtype = np.float32,
+        dtype: type = np.float32,
     ) -> Self:
         """
         ガウシアンノイズから音を生成します.
@@ -92,7 +95,7 @@ class Audio:
             sec (float): 継続時間
             sigma (float): 標準偏差
             mu (float, optional): 平均
-            dtype (np.dtype, optional): データタイプ
+            dtype (type, optional): データタイプ
 
         Returns:
             Audio: 生成した音
@@ -124,7 +127,7 @@ class Audio:
 
     def normalize(self) -> Self:
         """
-        音データをmin-max正規化し, 振幅を[-1, 1]にします.
+        音データを正規化し, 振幅を[-1, 1]にします.
 
         Returns:
             Audio: 正規化した音データのオーディオファイル
@@ -132,6 +135,14 @@ class Audio:
         d_max = np.max(np.abs(self.data))
 
         return Audio(self.data / d_max, self.fs, dtype=self.dtype)
+
+    def pad(
+        self, pad_width: Union[int, tuple[int, int]], value: Union[int, float] = 0
+    ) -> Self:
+        return Audio(
+            np.pad(self.data, pad_width, mode="constant", constant_values=value),
+            self.fs,
+        )
 
     def save(
         self,
@@ -209,7 +220,7 @@ class Audio:
         frame_shift: int,
         padding: bool = True,
         padding_mode: str = "reflect",
-        dtype: np.dtype = np.float32,
+        dtype: type = np.float32,
     ) -> WaveformFrameSeries:
         """
         フレーム系列の時間波形に変換します.
@@ -219,7 +230,7 @@ class Audio:
             frame_shift (int): フレームシフト
             padding (bool, optional): パディングするかどうか
             padding_mode (str, optional): パディングの方法. numpyのpad関数に使用します
-            dtype (np.dtype, optional): データタイプ
+            dtype (type, optional): データタイプ
 
         Returns:
             Waveform: フレーム系列の時間波形
@@ -262,7 +273,6 @@ class Audio:
             self.fs,
             fmin,
             bins_per_octave=bins_per_octave,
-            dtype=None,
         )
 
     def to_npz(
@@ -367,15 +377,15 @@ class StereoAudio:
         return self.__right_channel
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> type:
         """
         音データのデータタイプ
         """
-        return self.left_channel
+        return self.left_channel.dtype
 
     @classmethod
     def read(
-        cls, path: str, fs: Optional[int] = None, dtype: np.dtype = np.float32
+        cls, path: str, fs: Optional[int] = None, dtype: type = np.float32
     ) -> Self:
         """
         オーディオファイルからインスタンスを生成します. 対応しているフォーマットは`librosa.core.load`を確認してください.
@@ -385,7 +395,7 @@ class StereoAudio:
         Args:
             path (str): オーディオファイルパス
             fs (Optional[int], optional): サンプリング周波数. Noneの場合読み込んだオーディオファイルのサンプリング周波数になります
-            dtype (np.dtype, optional): データタイプ
+            dtype (type, optional): データタイプ
 
         Returns:
             StereoAudio: 生成したインスタンス
@@ -402,7 +412,7 @@ class StereoAudio:
         left_channel: np.ndarray,
         right_channel: np.ndarray,
         fs: int,
-        dtype: Optional[np.dtype] = None,
+        dtype: Optional[type] = None,
     ) -> Self:
         """
         numpy配列からステレオオーディオファイルを生成します
@@ -411,7 +421,7 @@ class StereoAudio:
             left_channel (np.ndarray): 左チャネルのデータ
             right_channel (np.ndarray): 右チャネルのデータ
             fs (int): サンプリング周波数
-            dtype (Optional[np.dtype], optional): データタイプ
+            dtype (Optional[type], optional): データタイプ
 
         Returns:
             StereoAudio: 生成したステレオオーディオファイル
@@ -474,7 +484,7 @@ class StereoAudio:
 
         soundfile.write(
             path,
-            np.hstack(left_channel, right_channel),
+            np.vstack((left_channel.data, right_channel.data)).T,
             self.fs,
             "PCM_{}".format(target_bits),
         )
@@ -501,12 +511,12 @@ class FrameSeries:
     def __init__(
         self,
         frame_series: np.ndarray,
-        dtype: Optional[np.dtype] = None,
+        dtype: Optional[type] = None,
     ) -> None:
         """
         Args:
             frame_series (np.ndarray): フレーム単位の系列(2次元を想定)
-            dtype (np.dtype): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
+            dtype (type): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
 
         Raises:
             ValueError: フレームの系列が2次元でない場合
@@ -514,8 +524,8 @@ class FrameSeries:
         if len(frame_series.shape) != 2:
             raise ValueError("フレームの系列は2次元でなければなりません.")
 
-        self.__frame_series = frame_series.astype(
-            dtype if dtype is not None else frame_series.dtype
+        self.__frame_series = (
+            frame_series.astype(dtype=dtype) if dtype is not None else frame_series
         )
 
     @property
@@ -539,12 +549,12 @@ class FrameSeries:
         return self.__frame_series
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> type:
         """
         フレームの系列のデータタイプを返します.
 
         Returns:
-            np.dtype: データタイプ
+            type: データタイプ
         """
         return self.__frame_series.dtype
 
@@ -570,12 +580,7 @@ class FrameSeries:
         padded: np.ndarray = np.pad(
             self.frame_series,
             (
-                (
-                    0,
-                    0
-                    if self.frame_series.shape[0] % frames == 0
-                    else (frames - (self.frame_series.shape[0] % frames)),
-                ),
+                (0, (frames - (self.frame_series.shape[0] % frames)) % frames),
                 (0, 0),
             ),
         )
@@ -727,7 +732,9 @@ class FrameSeries:
                 for other in others
             ]
         ):
-            raise ValueError("結合する全てのインスタンスのプロパティが一致する必要があります")
+            raise ValueError(
+                "結合する全てのインスタンスのプロパティが一致する必要があります"
+            )
 
         return self.copy_with(
             frame_series=reduce(
@@ -769,7 +776,9 @@ class FrameSeries:
                 for other in others
             ]
         ):
-            raise ValueError("結合する全てのインスタンスのプロパティが一致する必要があります")
+            raise ValueError(
+                "結合する全てのインスタンスのプロパティが一致する必要があります"
+            )
 
         return self.copy_with(
             frame_series=reduce(
@@ -779,37 +788,6 @@ class FrameSeries:
                 others[1:],
                 others[0].frame_series,
             )
-        )
-
-    def properties(self) -> dict[str, Any]:
-        """
-        このフレームの系列を生成したプロパティを辞書形式で返します
-
-        Returns:
-            dict[str, Any]: プロパティの辞書
-        """
-
-        bases = list(
-            map(
-                lambda cls: "_" + cls.__name__,
-                filter(
-                    lambda cls: cls is not object,
-                    inspect.getmro(self.__class__),
-                ),
-            )
-        )
-
-        return dict(
-            map(
-                lambda e: (
-                    re.sub("(" + "|".join(bases + ["__"]) + ")", "", e[0]),
-                    e[1],
-                ),
-                filter(
-                    lambda e: not "__frame_series" in e[0],
-                    self.__dict__.items(),
-                ),
-            ),
         )
 
     def save(self, path: str, compress: bool = False, overwrite: bool = False) -> Self:
@@ -836,14 +814,14 @@ class FrameSeries:
                 path,
                 type=self.__class__.__name__,
                 frame_series=self.frame_series,
-                **self.properties(),
+                **self.__dict__,
             )
         else:
             np.savez(
                 path,
                 type=self.__class__.__name__,
                 frame_series=self.frame_series,
-                **self.properties(),
+                **self.__dict__,
             )
 
         return self
@@ -867,7 +845,9 @@ class FrameSeries:
         type_name = params.pop("type")
 
         if type_name != cls.__name__:
-            raise TypeError("{} は type:{} で読み込む必要があります.".format(path, type_name))
+            raise TypeError(
+                "{} は type:{} で読み込む必要があります.".format(path, type_name)
+            )
 
         return cls(**params)
 
@@ -971,7 +951,7 @@ class FrameSeries:
         Returns:
             bool: 自身のインスタンスのプロパティともう一方のプロパティが一致するか
         """
-        return self.properties() == other.properties()
+        return self.__dict__ == other.__dict__
 
     def dump(self) -> Self:
         """
@@ -1006,7 +986,9 @@ class FrameSeries:
                     frame_series=self.frame_series + other.frame_series
                 )
             else:
-                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+                raise CannotCalcError(
+                    "この二つのフレーム系列の演算は行えません.\n", str(self), str(other)
+                )
 
         return self.copy_with(frame_series=self.frame_series + other)
 
@@ -1017,7 +999,9 @@ class FrameSeries:
                     frame_series=self.frame_series - other.frame_series
                 )
             else:
-                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+                raise CannotCalcError(
+                    "この二つのフレーム系列の演算は行えません.\n", str(self), str(other)
+                )
 
         return self.copy_with(frame_series=self.frame_series - other)
 
@@ -1028,7 +1012,9 @@ class FrameSeries:
                     frame_series=self.frame_series * other.frame_series
                 )
             else:
-                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+                raise CannotCalcError(
+                    "この二つのフレーム系列の演算は行えません.\n", str(self), str(other)
+                )
 
         return self.copy_with(frame_series=self.frame_series * other)
 
@@ -1039,7 +1025,9 @@ class FrameSeries:
                     frame_series=self.frame_series / other.frame_series
                 )
             else:
-                raise CannotCalcError("この二つのフレーム系列の演算は行えません.\n", str(self), str(other))
+                raise CannotCalcError(
+                    "この二つのフレーム系列の演算は行えません.\n", str(self), str(other)
+                )
 
         return self.copy_with(frame_series=self.frame_series / other)
 
@@ -1079,16 +1067,13 @@ class FrameSeries:
     def __gt__(self, other: Any) -> np.ndarray:
         return self.frame_series.__gt__(other)
 
-    def __repr__(self) -> str:
-        return self.frame_series.__repr__()
-
     def __str__(self) -> str:
         string = "Feature Summary\n"
         string += "------------------------------------\n"
         string += "type: " + self.__class__.__name__ + "\n"
         string += "data shape: {}\n".format(self.shape)
         string += "data type: {}\n".format(self.dtype)
-        for feature, value in self.properties().items():
+        for feature, value in self.__dict__.items():
             string += "{}: {}\n".format(feature, value)
         string += "------------------------------------\n"
 
@@ -1098,7 +1083,7 @@ class FrameSeries:
 class TimeDomainFrameSeries(FrameSeries):
     """
     時間領域のフレームの系列を扱うクラスです.
-    継承して新しいプロパティを追加する場合, `copy_with()`と`properties()`を適切にオーバーライドしてください.
+    継承して新しいプロパティを追加する場合, `copy_with()`を適切にオーバーライドしてください.
     """
 
     def __init__(
@@ -1107,7 +1092,7 @@ class TimeDomainFrameSeries(FrameSeries):
         frame_length: int,
         frame_shift: int,
         fs: int,
-        dtype: Optional[np.dtype] = None,
+        dtype: Optional[type] = None,
     ) -> None:
         """
         Args:
@@ -1115,7 +1100,7 @@ class TimeDomainFrameSeries(FrameSeries):
             frame_length (int): フレーム長
             frame_shift (int): シフト長
             fs (int): サンプリング周波数
-            dtype (Optional[np.dtype], optional): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
+            dtype (Optional[type], optional): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
         """
         super().__init__(frame_series, dtype=dtype)
         self.__frame_length = frame_length
@@ -1184,7 +1169,7 @@ class TimeDomainFrameSeries(FrameSeries):
 class FreqDomainFrameSeries(FrameSeries):
     """
     周波数領域のフレームの系列を扱うクラスです.
-    継承して新しいプロパティを追加する場合, `copy_with()`と`properties()`を適切にオーバーライドしてください.
+    継承して新しいプロパティを追加する場合, `copy_with()`を適切にオーバーライドしてください.
     """
 
     def __init__(
@@ -1196,7 +1181,7 @@ class FreqDomainFrameSeries(FrameSeries):
         fs: int,
         dB: bool = False,
         power: bool = False,
-        dtype: Optional[np.dtype] = None,
+        dtype: Optional[type] = None,
     ) -> None:
         """
         Args:
@@ -1207,7 +1192,7 @@ class FreqDomainFrameSeries(FrameSeries):
             fs (int): サンプリング周波数
             dB (bool, optional): この系列がdB値であるか. Trueの場合, この系列はdB値であることを示します.
             power (bool, optional): この系列がパワーであるか. Trueの場合, この系列はパワー値であることを示します.
-            dtype (Optional[np.dtype], optional): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
+            dtype (Optional[type], optional): フレームのデータタイプ. `None` の場合 `frame_series` のデータタイプになります
         """
         super().__init__(frame_series, dtype=dtype)
         self.__frame_length = frame_length
